@@ -1,0 +1,1 @@
+{% extends 'songs/base.html' %}{% block content %}<section class="narrow"><p class="eyebrow">SONG & HYMN</p><h1>{{ heading }}</h1><p>{{ intro }}</p><form method="post">{% csrf_token %}{{ form.as_p }}<button>Submit</button></form></section>{% endblock %}
