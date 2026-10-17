@@ -119,7 +119,7 @@
         if(url)download.href=url;else download.removeAttribute('href');
         if(recordingForm) {
           recordingForm.querySelector('.remove-recording').hidden=!url;
-          if(!recordingUploadBusy && !recordingForm.elements.recording.files.length)recordingForm.elements.revision.value=part.revision;
+          if(!recordingUploadBusy && !recordingForm.dataset.micActive && !recordingForm.elements.recording.files.length)recordingForm.elements.revision.value=part.revision;
         }
         const display=panel.querySelector('.music-display');
         if(display.dataset.content!==part.content) {
@@ -321,20 +321,23 @@
     commentForm.elements.anchor.addEventListener('input',setCommentRevision);
     commentForm.addEventListener('submit',async event=>{
       event.preventDefault();if(commentBusy)return;const status=document.querySelector('#comment-status');
+      if(commentForm.dataset.micActive){status.textContent='Stop your recording and listen to it before sharing.';return;}
       if(!commentForm.elements.body.value.trim() && !commentForm.elements.recording.files.length){status.textContent='Write a comment or attach a recording.';return;}
       if(commentForm.elements.recording.files[0]?.size > 25*1024*1024){status.textContent='Recordings can be up to 25 MB.';return;}
-      commentBusy=true;commentForm.querySelector('button').disabled=true;
+      commentBusy=true;commentForm.querySelector('button[type=submit]').disabled=true;
       if(!commentForm.elements.anchor.value)setCommentRevision();
       status.textContent='Sharing…';
       const payload=new FormData(commentForm);
+      commentForm.dispatchEvent(new Event('audio:upload-start'));
       commentForm.querySelectorAll('input,textarea,select').forEach(control=>control.disabled=true);
       try {
         const state=await post(payload);
         commentForm.elements.body.value='';commentForm.elements.anchor.value='';commentForm.elements.recording.value='';
         commentForm.elements.part_revision.value='';
+        commentForm.dispatchEvent(new Event('audio:uploaded'));
         status.textContent='Your thought has been shared.';applyState(state);
       } catch(error) {status.textContent=error.message;}
-      finally {commentBusy=false;commentForm.querySelectorAll('input,textarea,select,button').forEach(control=>control.disabled=false);}
+      finally {commentBusy=false;commentForm.querySelectorAll('input,textarea,select').forEach(control=>control.disabled=false);commentForm.querySelector('button[type=submit]').disabled=false;commentForm.dispatchEvent(new Event('audio:upload-finished'));}
     });
   }
   if(recordingForm) {
@@ -345,6 +348,7 @@
       event.preventDefault();if(recordingUploadBusy)return;
       const action=event.submitter?.value || 'recording';
       const status=recordingForm.querySelector('.recording-status');
+      if(recordingForm.dataset.micActive){status.textContent='Stop your recording and listen to it before uploading.';return;}
       const file=recordingForm.elements.recording.files[0];
       if(action==='recording' && !file){status.textContent='Choose a recording first.';return;}
       if(action==='recording' && file.size>25*1024*1024){status.textContent='Recordings can be up to 25 MB.';return;}
@@ -358,19 +362,22 @@
       const data=new FormData(recordingForm);data.set('action',action);
       if(action==='remove_recording')data.delete('recording');
       recordingUploadBusy=true;
+      recordingForm.dispatchEvent(new Event('audio:upload-start'));
       if(editor)editor.field.readOnly=true;
-      recordingForm.querySelectorAll('button,input[type=file]').forEach(b=>b.disabled=true);
+      recordingForm.querySelectorAll('button[name=action],input[type=file]').forEach(b=>b.disabled=true);
       status.textContent=action==='recording'?'Uploading recording…':'Removing recording…';
       try {
         const state=await post(data);
         recordingForm.elements.recording.value='';
+        recordingForm.dispatchEvent(new Event('audio:uploaded'));
         recordingUploadBusy=false;
         applyState(state);
         status.textContent=action==='recording'?'Recording uploaded.':'Recording removed.';
       } catch(error) {status.textContent=error.message;}
       finally {
         recordingUploadBusy=false;
-        recordingForm.querySelectorAll('button,input[type=file]').forEach(b=>b.disabled=false);
+        recordingForm.querySelectorAll('button[name=action],input[type=file]').forEach(b=>b.disabled=false);
+        recordingForm.dispatchEvent(new Event('audio:upload-finished'));
         // Poll restores the correct permission state after a failed upload.
         await poll();
       }
@@ -382,7 +389,7 @@
     window.dispatchEvent(new Event('playback:recording'));
   },true);
   window.addEventListener('beforeunload',event=>{
-    if(recordingUploadBusy || commentBusy || recordingForm?.elements.recording.files.length || editors.some(e=>dirty(e)||e.busy) || commentForm?.elements.body.value.trim() || commentForm?.elements.recording.files.length) {event.preventDefault();event.returnValue='';}
+    if(recordingForm?.dataset.micActive || commentForm?.dataset.micActive || recordingUploadBusy || commentBusy || recordingForm?.elements.recording.files.length || editors.some(e=>dirty(e)||e.busy) || commentForm?.elements.body.value.trim() || commentForm?.elements.recording.files.length) {event.preventDefault();event.returnValue='';}
   });
   setInterval(poll,3000);
   setInterval(()=>editors.forEach(reserve),10000);

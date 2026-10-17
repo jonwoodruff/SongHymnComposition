@@ -3,8 +3,8 @@ const assert=require('node:assert/strict');
 const base=process.env.BROWSER_TEST_URL;
 if(!base) throw new Error('Run this through scripts/browser_smoke.py against its isolated database.');
 (async()=>{
- const browser=await chromium.launch({executablePath:process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
- const a=await browser.newContext({viewport:{width:1440,height:1100}}), r=await browser.newContext({viewport:{width:1440,height:1100}});
+ const browser=await chromium.launch({executablePath:process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,args:['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream']});
+ const a=await browser.newContext({viewport:{width:1440,height:1100},permissions:['microphone']}), r=await browser.newContext({viewport:{width:1440,height:1100},permissions:['microphone']});
  const page=await a.newPage(), other=await r.newPage();const errors=[];
  for(const p of [page,other])p.on('pageerror',e=>errors.push(e.message));
  async function login(p,user){await p.goto(`${base}/accounts/login/`);await p.locator('[name=username]').fill(user);await p.locator('[name=password]').fill('browser-only-password');await p.getByRole('button',{name:'Sign in',exact:true}).click();await p.goto(`${base}/songs/1/`);}
@@ -134,6 +134,96 @@ if(!base) throw new Error('Run this through scripts/browser_smoke.py against its
  await other.waitForFunction(()=>document.querySelector('.tune-recording').hidden);
  console.log('PASS failed upload preserves draft and tune recording removal updates live');
 
+
+ // Use Chrome's fake microphone: exercise the real recorder, conversion and server validation.
+ await page.evaluate(()=>{
+   const capture=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+   window.testMicrophoneStreams=[];window.nativeTestMicrophone=capture;
+   navigator.mediaDevices.getUserMedia=async constraints=>{
+     const stream=await capture(constraints);window.testMicrophoneStreams.push(stream);return stream;
+   };
+ });
+ const tuneMic=page.locator('#tune-recording-form .microphone-recorder');
+ const tuneRevisionBefore=await page.locator('#part-tune').getAttribute('data-revision');
+ await tuneMic.locator('[data-record]').click();
+ await page.waitForFunction(()=>document.querySelector('#tune-recording-form').dataset.micActive==='recording');
+ await page.waitForTimeout(1200);
+ assert(await page.getByRole('button',{name:'Upload recording',exact:true}).isDisabled());
+ await tuneMic.locator('[data-stop]').click();
+ await page.waitForFunction(()=>document.querySelector('#tune-recording-file').files[0]?.name.startsWith('microphone-') && !document.querySelector('#tune-recording-form').dataset.micActive);
+ assert.equal(await page.locator('#part-tune').getAttribute('data-revision'),tuneRevisionBefore);
+ assert(await page.evaluate(()=>window.testMicrophoneStreams.every(stream=>stream.getTracks().every(track=>track.readyState==='ended'))));
+ assert.equal(await page.locator('#tune-recording-file').evaluate(el=>el.files[0].type),'audio/wav');
+ await tuneMic.locator('audio').evaluate(el=>el.play());
+ await page.getByRole('button',{name:'Upload recording',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('.recording-status').textContent==='Recording uploaded.');
+ await other.waitForFunction(()=>!document.querySelector('.tune-recording').hidden);
+ assert.equal(await tuneMic.locator('.microphone-preview').isVisible(),false);
+ console.log('PASS microphone tune capture, local preview before upload, WAV upload and microphone release');
+ const commentMic=page.locator('#comment-form .microphone-recorder');
+ const commentsBefore=await page.locator('#comment-list [data-comment]').count();
+ await commentMic.locator('[data-record]').click();
+ await page.waitForFunction(()=>document.querySelector('#comment-form').dataset.micActive==='recording');
+ await page.waitForTimeout(1100);
+ await commentMic.locator('[data-stop]').click();
+ await page.waitForFunction(()=>document.querySelector('#comment-recording-file').files.length===1 && !document.querySelector('#comment-form').dataset.micActive);
+ assert.equal(await page.locator('#comment-list [data-comment]').count(),commentsBefore);
+ const priorTake=await page.locator('#comment-recording-file').evaluate(el=>el.files[0].name);
+ await commentMic.locator('[data-record]').click();
+ await page.waitForFunction(()=>document.querySelector('#comment-form').dataset.micActive==='recording');
+ await commentMic.locator('[data-cancel]').click();
+ assert.equal(await page.locator('#comment-recording-file').evaluate(el=>el.files[0].name),priorTake);
+ assert(await page.evaluate(()=>window.testMicrophoneStreams.every(stream=>stream.getTracks().every(track=>track.readyState==='ended'))));
+ await page.getByRole('button',{name:'Share thought'}).click();
+ await page.waitForFunction(count=>document.querySelectorAll('#comment-list [data-comment]').length>count,commentsBefore);
+ assert.equal(await commentMic.locator('.microphone-preview').isVisible(),false);
+ console.log('PASS recorded audio-only comment and cancelled retake keeps prior take');
+ await commentMic.locator('[data-record]').click();
+ await page.waitForFunction(()=>document.querySelector('#comment-form').dataset.micActive==='recording');
+ await page.waitForTimeout(1000);await commentMic.locator('[data-stop]').click();
+ await page.waitForFunction(()=>document.querySelector('#comment-recording-file').files.length===1 && !document.querySelector('#comment-form').dataset.micActive);
+ await commentMic.locator('[data-discard]').click();
+ assert.equal(await page.locator('#comment-recording-file').evaluate(el=>el.files.length),0);
+ assert.equal(await commentMic.locator('.microphone-preview').isVisible(),false);
+ await page.evaluate(()=>{navigator.mediaDevices.getUserMedia=()=>Promise.reject(new DOMException('Denied in test','NotAllowedError'));});
+ await commentMic.locator('[data-record]').click();
+ await page.waitForFunction(()=>document.querySelector('#comment-form .microphone-status').textContent.includes('not allowed'));
+ assert.equal(await page.locator('#comment-recording-file').isDisabled(),false);
+ assert.equal(await commentMic.locator('[data-record]').isDisabled(),false);
+ console.log('PASS discard and denied microphone permission leave file upload usable');
+
+ await page.evaluate(()=>{navigator.mediaDevices.getUserMedia=window.nativeTestMicrophone;});
+ await commentMic.locator('[data-record]').click();
+ await page.waitForFunction(()=>document.querySelector('#comment-form').dataset.micActive==='recording');
+ await page.waitForTimeout(1100);
+ await page.evaluate(()=>{window.originalRecorderClock=performance.now.bind(performance);performance.now=()=>window.originalRecorderClock()+301000;});
+ await page.waitForFunction(()=>!document.querySelector('#comment-form').dataset.micActive && document.querySelector('#comment-recording-file').files.length===1);
+ await page.evaluate(()=>{performance.now=window.originalRecorderClock;});
+ await commentMic.locator('[data-discard]').click();
+ console.log('PASS automatic recording limit creates a local take');
+ // Cancelling a pending permission prompt must stop a stream granted after cancellation.
+ await page.evaluate(()=>{
+   navigator.mediaDevices.getUserMedia=()=>new Promise(resolve=>window.resolveTestMicrophone=resolve);
+ });
+ await commentMic.locator('[data-record]').click();
+ await page.waitForFunction(()=>document.querySelector('#comment-form').dataset.micActive==='requesting');
+ await commentMic.locator('[data-cancel]').click();
+ await page.evaluate(()=>{
+   const track={readyState:'live',stop(){this.readyState='ended';}};
+   window.lateTestMicrophoneTrack=track;window.resolveTestMicrophone({getTracks:()=>[track]});
+ });
+ await page.waitForFunction(()=>window.lateTestMicrophoneTrack.readyState==='ended');
+ assert.equal(await page.locator('#comment-recording-file').evaluate(el=>el.files.length),0);
+ console.log('PASS cancelled permission request releases late microphone access');
+
+ const unsupported=await a.newPage();
+ await unsupported.addInitScript(()=>{window.MediaRecorder=undefined;});
+ await unsupported.goto(`${base}/songs/1/`);
+ assert(await unsupported.locator('#comment-form [data-record]').isDisabled());
+ assert.equal(await unsupported.locator('#comment-recording-file').isDisabled(),false);
+ assert.match(await unsupported.locator('#comment-form .microphone-status').innerText(),/not supported/);
+ await unsupported.close();
+ console.log('PASS unsupported recording API leaves file upload available');
  await page.screenshot({path:`${process.env.BROWSER_OUTPUT_DIR}/desktop.png`,fullPage:true});
  await page.setViewportSize({width:390,height:844});
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));

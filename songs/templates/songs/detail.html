@@ -22,6 +22,7 @@
     <form method="post" enctype="multipart/form-data" id="tune-recording-form">
     {% csrf_token %}<input type="hidden" name="stage" value="{{ song.stage }}"><input type="hidden" name="revision" value="{{ part.revision }}"><input type="hidden" name="scope" value="tune"><input type="hidden" name="song_revision" value="{{ song.revision }}">
     <label for="tune-recording-file">Tune recording</label><input type="file" id="tune-recording-file" name="recording" accept=".mp3,.m4a,.wav,.ogg,.flac,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/flac" aria-describedby="tune-recording-help">
+    {% include "songs/microphone.html" with recorder_label="tune" %}
     <p class="muted" id="tune-recording-help">MP3, M4A, WAV, OGG, or FLAC · up to 25 MB. Upload a recording you have permission to share. It will be publicly playable.</p>
     <p class="recording-status muted" role="status"></p><button name="action" value="recording">Upload recording</button>
     <button class="quiet remove-recording" name="action" value="remove_recording"{% if not part.recording_id %} hidden{% endif %}>Remove recording</button>
@@ -84,8 +85,8 @@
 <label>About<select name="scope" id="comment-scope"><option value="concept">Concept</option><option value="lyrics">Lyrics</option><option value="tune">Tune</option><option value="review">Frozen review</option></select></label>
 <label>Selected phrase or note<input name="anchor" id="comment-anchor" maxlength="500" placeholder="Optional"></label>
 <label>Your comment<textarea name="body" rows="4"></textarea></label>
-<label for="comment-recording-file">Attach a recording (optional)</label><input type="file" name="recording" id="comment-recording-file" accept=".mp3,.m4a,.wav,.ogg,.flac,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/flac" aria-describedby="comment-recording-help"><p class="muted" id="comment-recording-help">Up to 25 MB · publicly playable. Only upload recordings you have permission to share. Text is optional when attaching audio.</p>
-<p id="comment-status" role="status" class="muted"></p><button>Share thought</button>
+<label for="comment-recording-file">Attach a recording (optional)</label><input type="file" name="recording" id="comment-recording-file" accept=".mp3,.m4a,.wav,.ogg,.flac,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/flac" aria-describedby="comment-recording-help">{% include "songs/microphone.html" with recorder_label="comment" %}<p class="muted" id="comment-recording-help">Up to 25 MB · publicly playable. Only upload recordings you have permission to share. Text is optional when attaching audio.</p>
+<p id="comment-status" role="status" class="muted"></p><button type="submit">Share thought</button>
 </form></details>
 {% else %}<p><a href="{% url 'join' %}">Join the table</a> to contribute.</p>{% endif %}
 </aside></div></div>
@@ -94,4 +95,5 @@
 <script src="{% static 'songs/abcjs-basic-min.js' %}"></script>
 <script src="{% static 'songs/melody.js' %}"></script>
 <script src="{% static 'songs/editing.js' %}"></script>
+<script src="{% static 'songs/microphone.js' %}"></script>
 {% endblock %}

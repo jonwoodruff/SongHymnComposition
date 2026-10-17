@@ -1,0 +1,13 @@
+<div class="microphone-recorder" data-recorder-label="{{ recorder_label }}">
+  <div class="microphone-controls">
+    <button type="button" class="record-button" data-record aria-label="Record {{ recorder_label }}">● Record</button>
+    <button type="button" data-stop aria-label="Stop {{ recorder_label }} recording" hidden>■ Stop</button>
+    <button type="button" class="quiet" data-cancel hidden>Cancel</button>
+    <output class="recording-timer" aria-label="Recording duration" aria-live="off" hidden>0:00</output>
+  </div>
+  <p class="microphone-status muted" role="status">Record here, or choose a file above. Listen before sharing.</p>
+  <div class="microphone-preview" hidden>
+    <audio controls preload="metadata" aria-label="Preview {{ recorder_label }} recording"></audio>
+    <button type="button" class="quiet" data-discard>Discard this take</button>
+  </div>
+</div>

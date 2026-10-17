@@ -40,7 +40,11 @@ New applications require separate fellowship and licensing checkboxes. The fello
 
 ## Uploaded recordings
 
-The tune section has an **Add or replace a tune recording** control. A recording appears alongside the synthesized preview with play/pause, volume, seeking, and a download link. It can also be used as the tune when notation has not been entered. Uploading, replacing, or removing a tune recording follows the existing author/reviewer editing rules and advances the tune and song revisions, clearing author sign-off and requiring fresh tune or publication approvals. Earlier recordings remain stored with their revision snapshots. Editing notation retains the attached recording.
+The tune section has an **Add or replace a tune recording** control. Both this control and the comment composer offer **Record**, **Stop**, local preview, **Record again**, and **Discard this take** alongside file selection. Microphone access is requested only when Record is clicked. Nothing is uploaded until Upload recording or Share thought is clicked; a cancelled retake preserves the previous selection. Microphone tracks stop on Stop, Cancel, errors, or page exit, including a permission grant that arrives after cancellation.
+
+Microphone takes automatically stop after five minutes and are converted locally to mono 24 kHz, 16-bit WAV before entering the existing upload flow. This avoids depending on server support for each browser’s native recorder format. Recording requires HTTPS or a loopback development address such as `127.0.0.1`; browsers without recording support still allow file upload. These takes stay only in browser memory until explicitly shared and are lost if the page is closed.
+
+The tune recording appears alongside the synthesized preview with play/pause, volume, seeking, and a download link. It can also be used as the tune when notation has not been entered. Uploading, replacing, or removing a tune recording follows the existing author/reviewer editing rules and advances the tune and song revisions, clearing author sign-off and requiring fresh tune or publication approvals. Earlier recordings remain stored with their revision snapshots. Editing notation retains the attached recording.
 
 Approved members can attach one recording to a comment, with or without text. These recordings appear in the sidebar and can be heard by public visitors. New live comments preserve existing player elements, so they do not interrupt playback. Starting another recording or the synthesized preview pauses the previous player.
 
@@ -76,7 +80,7 @@ npm install --prefix /tmp/songhymn-browser-check --cache /tmp/songhymn-npm-cache
 NODE_PATH=/tmp/songhymn-browser-check/node_modules .venv/bin/python scripts/browser_smoke.py
 ```
 
-This uses Chrome on macOS by default; set `CHROME_PATH` to your Chrome executable elsewhere. It checks autosave, live viewing, editing presence, independent sections, handoff, live comments, quotation markers, melody autosave, mobile overflow, and browser JavaScript errors.
+This uses Chrome on macOS by default; set `CHROME_PATH` to your Chrome executable elsewhere. It checks autosave, live viewing, editing presence, independent sections, handoff, live comments, quotation markers, melody autosave, mobile overflow, and browser JavaScript errors, microphone capture with a simulated device, permission denial, cancellation, and local WAV conversion.
 
 Tests exercise approvals, independence from the author, role restrictions, lock expiry, stale revisions, frozen edits, return-to-development voting, private application details, pending accounts, registration, CSRF enforcement, and public page rendering. The autosave and comments interface is also checked in two isolated headless Chrome sessions. Audio quality and the musical correctness of scores still require listening and manual testing.
 
