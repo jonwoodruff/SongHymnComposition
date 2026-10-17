@@ -2,7 +2,8 @@ from django.contrib import admin
 from .models import Membership, Song, Part, Revision, Approval, Comment, EditLock
 @admin.register(Membership)
 class MembershipAdmin(admin.ModelAdmin):
-    list_display=['user','interests','role']
+    list_display=['user','interests','role','agreement_accepted_at']
+    readonly_fields=['agreement_version','agreement_accepted_at']
     list_filter=['role']
     search_fields=['user__username','user__email']
     list_editable=['role']

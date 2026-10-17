@@ -5,6 +5,7 @@ from django.utils import timezone
 from datetime import timedelta
 from .models import Song, Part, Membership, Approval, EditLock
 from .workflow import act, count
+from .policy import AGREEMENT_VERSION
 
 @override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
 class WorkflowTests(TestCase):
@@ -13,14 +14,14 @@ class WorkflowTests(TestCase):
         self.commenter=self.member('commenter','commenter')
         self.reviewers=[self.member(f'reviewer{i}','reviewer') for i in range(6)]
         self.song=Song.objects.create(title='A shared song',author=self.author)
-        for kind in ('concept','lyrics','tune'): Part.objects.create(song=self.song,kind=kind,content='First version')
+        for kind in ('concept','lyrics','tune'): Part.objects.create(song=self.song,kind=kind,content='First version', license_code='CC-BY-4.0')
     def member(self,name,role):
         user=User.objects.create_user(name,password='test-pass-2026')
-        Membership.objects.create(user=user,role=role,interests='compose',testimony='Private testimony',experience='Singing')
+        Membership.objects.create(user=user,role=role,interests='compose',testimony='Private testimony',experience='Singing', agreement_version=AGREEMENT_VERSION, agreement_accepted_at=timezone.now())
         return user
     def do(self,user,action,**data):
         self.song.refresh_from_db()
-        return act(user,self.song.pk,action,{'song_revision':str(self.song.revision),**data})
+        return act(user,self.song.pk,action,{'song_revision':str(self.song.revision),'stage':self.song.stage,**data})
     def freeze(self):
         for kind in ('concept','lyrics','tune'):
             for reviewer in self.reviewers[:2]: self.do(reviewer,'approve',scope=kind)
@@ -103,7 +104,7 @@ class WorkflowTests(TestCase):
         response=client.post(f'/songs/{self.song.pk}/',{'action':'sign','song_revision':'1'})
         self.assertEqual(response.status_code,403)
     def test_membership_request_does_not_grant_requested_role(self):
-        response=self.client.post('/join/',{'username':'applicant','email':'test@example.com','interests':['review'],'testimony':'My testimony','experience':'My experience','password1':'Long-test-password-2026','password2':'Long-test-password-2026'})
+        response=self.client.post('/join/',{'username':'applicant','email':'test@example.com','interests':['review'],'testimony':'My testimony','experience':'My experience','password1':'Long-test-password-2026','password2':'Long-test-password-2026','fellowship':'on','licensing':'on'})
         self.assertEqual(response.status_code,302)
         self.assertEqual(Membership.objects.get(user__username='applicant').role,'pending')
     def test_demoted_reviewers_no_longer_count(self):
@@ -153,7 +154,7 @@ class WorkflowTests(TestCase):
 
     def test_lock_can_be_requested_without_page_navigation(self):
         self.client.force_login(self.author)
-        payload = {'action': 'lock', 'scope': 'lyrics', 'song_revision': '1'}
+        payload = {'action': 'lock', 'scope': 'lyrics', 'song_revision': '1', 'stage':'draft'}
         response = self.client.post(f'/songs/{self.song.pk}/', payload, HTTP_ACCEPT='application/json')
         self.assertEqual(response.status_code, 200)
         self.assertIn('message', response.json())
@@ -168,3 +169,125 @@ class WorkflowTests(TestCase):
         EditLock.objects.update(expires=timezone.now()-timedelta(seconds=1))
         self.do(self.author, 'save', scope='lyrics', revision='1', content='Saved after expiry')
         self.assertEqual(self.song.parts.get(kind='lyrics').content, 'Saved after expiry')
+
+    def autosave(self, user, kind, content, revision='1', stage='draft'):
+        self.client.force_login(user)
+        return self.client.post(f'/songs/{self.song.pk}/', {
+            'action':'autosave', 'scope':kind, 'content':content,
+            'revision':revision, 'stage':stage, 'song_revision':'1',
+        }, HTTP_ACCEPT='application/json')
+
+    def test_autosaves_to_different_sections_do_not_conflict(self):
+        first=self.autosave(self.author, 'concept', 'A new concept')
+        second=self.autosave(self.reviewers[0], 'lyrics', 'New lyrics from the same starting song version')
+        self.assertEqual(first.status_code,200)
+        self.assertEqual(second.status_code,200)
+        self.assertEqual(self.song.parts.get(kind='concept').content,'A new concept')
+        self.assertEqual(self.song.parts.get(kind='lyrics').revision,2)
+
+    def test_autosave_rejects_stale_section_without_overwrite(self):
+        self.assertEqual(self.autosave(self.author,'lyrics','First saved change').status_code,200)
+        stale=self.autosave(self.author,'lyrics','Stale competing text')
+        self.assertEqual(stale.status_code,409)
+        self.assertEqual(self.song.parts.get(kind='lyrics').content,'First saved change')
+
+    def test_autosave_does_not_invalidate_approvals_for_unchanged_content(self):
+        self.do(self.reviewers[0],'approve',scope='lyrics')
+        self.do(self.author,'sign')
+        response=self.autosave(self.author,'lyrics','First version')
+        self.assertEqual(response.status_code,200)
+        self.song.refresh_from_db()
+        self.assertTrue(self.song.author_signed)
+        self.assertEqual(self.song.revision,1)
+        self.assertEqual(count(self.song,'lyrics',1),1)
+
+    def test_autosave_respects_other_editor_and_stage(self):
+        self.do(self.reviewers[0],'lock',scope='lyrics')
+        self.assertEqual(self.autosave(self.author,'lyrics','Competing text').status_code,409)
+        self.freeze()
+        self.assertEqual(self.autosave(self.reviewers[0],'concept','Wrong stage').status_code,409)
+        self.assertEqual(self.autosave(self.author,'concept','Author cannot edit frozen',stage='frozen').status_code,403)
+        self.assertEqual(self.autosave(self.reviewers[0],'concept','Editorial change',stage='frozen').status_code,200)
+
+    def test_presence_release_and_public_live_state(self):
+        self.do(self.author,'lock',scope='lyrics')
+        self.client.logout()
+        state=self.client.get(f'/songs/{self.song.pk}/state/').json()
+        lyrics=next(p for p in state['parts'] if p['kind']=='lyrics')
+        self.assertEqual(lyrics['editor'],self.author.username)
+        self.assertFalse(lyrics['editing_here'])
+        self.assertNotIn('testimony',str(state))
+        self.do(self.reviewers[0],'release',scope='lyrics')
+        self.assertTrue(EditLock.objects.filter(part__kind='lyrics').exists())
+        self.do(self.author,'release',scope='lyrics')
+        self.assertFalse(EditLock.objects.filter(part__kind='lyrics').exists())
+
+    def test_live_comments_are_escaped_and_revision_checked(self):
+        self.do(self.commenter,'comment',scope='lyrics',body='<script>alert(1)</script>',anchor='First')
+        state=self.client.get(f'/songs/{self.song.pk}/state/').json()
+        self.assertIn('&lt;script&gt;',state['comments_html'])
+        self.assertNotIn('<script>',state['comments_html'])
+        self.assertEqual(state['annotations'][0]['anchor'],'First')
+        self.do(self.author,'save',scope='lyrics',revision='1',content='New words')
+        with self.assertRaises(ValidationError):
+            self.do(self.commenter,'comment',scope='lyrics',body='Old selection',part_revision='1')
+        self.assertEqual(self.song.comments.count(),1)
+
+    def test_signup_requires_both_agreements(self):
+        payload={'username':'noagreement','email':'a@example.com','interests':['compose'],
+            'testimony':'Testimony','experience':'Singing','password1':'Long-test-password-2026','password2':'Long-test-password-2026'}
+        response=self.client.post('/join/',payload)
+        self.assertEqual(response.status_code,200)
+        self.assertFalse(User.objects.filter(username='noagreement').exists())
+        payload.update(fellowship='on',licensing='on')
+        self.client.post('/join/',payload)
+        member=Membership.objects.get(user__username='noagreement')
+        self.assertEqual(member.agreement_version,AGREEMENT_VERSION)
+        self.assertIsNotNone(member.agreement_accepted_at)
+        self.assertEqual(member.role,'pending')
+
+    def test_existing_members_must_accept_before_new_content(self):
+        Membership.objects.filter(user=self.author).update(agreement_version='',agreement_accepted_at=None)
+        self.assertEqual(self.autosave(self.author,'lyrics','Not yet consented').status_code,409)
+        response=self.client.post('/agreement/',{'fellowship':'on','licensing':'on'})
+        self.assertEqual(response.status_code,302)
+        self.assertEqual(self.autosave(self.author,'lyrics','Consented change').status_code,200)
+        part=self.song.parts.get(kind='lyrics')
+        self.assertEqual(part.license_code,'CC-BY-4.0')
+        self.assertEqual(part.history.get().license_code,'CC-BY-4.0')
+
+    def test_unlicensed_legacy_content_is_not_silently_published(self):
+        self.song.parts.filter(kind='lyrics').update(license_code='')
+        self.freeze()
+        for reviewer in self.reviewers[:5]:self.do(reviewer,'approve',scope='publish')
+        with self.assertRaises(ValidationError):self.do(self.reviewers[0],'publish')
+        self.song.refresh_from_db()
+        self.assertEqual(self.song.stage,'frozen')
+
+    def test_published_edition_records_licence_without_changing_earlier_revisions(self):
+        self.freeze()
+        for reviewer in self.reviewers[:5]:self.do(reviewer,'approve',scope='publish')
+        self.do(self.reviewers[0],'publish')
+        self.song.refresh_from_db()
+        self.assertEqual(self.song.publication_license_code,'CC-BY-ND-4.0')
+        self.assertEqual(set(self.song.parts.values_list('license_code',flat=True)),{'CC-BY-4.0'})
+
+    def test_autosave_normalizes_browser_form_newlines(self):
+        response=self.autosave(self.author,'concept','First line\r\nSecond line')
+        self.assertEqual(response.status_code,200)
+        part=self.song.parts.get(kind='concept')
+        self.assertEqual(part.content,'First line\nSecond line')
+        next_save=self.autosave(self.author,'concept','First line\r\nSecond line',revision='2')
+        self.assertEqual(next_save.status_code,200)
+        part.refresh_from_db()
+        self.assertEqual(part.revision,2)
+
+    def test_legacy_section_needs_explicit_author_confirmation(self):
+        part=self.song.parts.get(kind='lyrics');part.license_code='';part.save()
+        with self.assertRaises(ValidationError):self.do(self.author,'license',scope='lyrics')
+        with self.assertRaises(ValidationError):self.do(self.reviewers[0],'license',scope='lyrics',rights_confirmed='on')
+        self.do(self.author,'license',scope='lyrics',rights_confirmed='on')
+        part.refresh_from_db()
+        self.assertEqual(part.content,'First version')
+        self.assertEqual(part.license_code,'CC-BY-4.0')
+        self.assertEqual(part.revision,2)

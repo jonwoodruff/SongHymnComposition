@@ -7,6 +7,8 @@ class Membership(models.Model):
     testimony = models.TextField()
     experience = models.TextField()
     role = models.CharField(max_length=20, choices=[('pending', 'Awaiting approval'), ('commenter', 'Commenter'), ('contributor', 'Contributor'), ('reviewer', 'Experienced reviewer')], default='pending')
+    agreement_version = models.CharField(max_length=40, blank=True)
+    agreement_accepted_at = models.DateTimeField(null=True, blank=True)
     def __str__(self): return f'{self.user} — {self.get_role_display()}'
 
 class Song(models.Model):
@@ -14,6 +16,7 @@ class Song(models.Model):
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     stage = models.CharField(max_length=12, choices=[('draft', 'In development'), ('frozen', 'Frozen review'), ('published', 'Published')], default='draft')
     revision = models.PositiveIntegerField(default=1)
+    publication_license_code = models.CharField(max_length=30, blank=True)
     author_signed = models.BooleanField(default=False)
     rework_requested = models.BooleanField(default=False)
     updated = models.DateTimeField(auto_now=True)
@@ -24,12 +27,14 @@ class Part(models.Model):
     kind = models.CharField(max_length=10, choices=[('concept', 'Concept'), ('lyrics', 'Lyrics'), ('tune', 'Tune')])
     content = models.TextField(blank=True)
     revision = models.PositiveIntegerField(default=1)
+    license_code = models.CharField(max_length=30, blank=True)
     class Meta:
         constraints = [models.UniqueConstraint(fields=['song', 'kind'], name='unique_song_part')]
 
 class Revision(models.Model):
     part = models.ForeignKey(Part, on_delete=models.CASCADE, related_name="history")
     number = models.PositiveIntegerField()
+    license_code = models.CharField(max_length=30, blank=True)
     content = models.TextField()
     editor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     created = models.DateTimeField(auto_now_add=True)
@@ -49,6 +54,7 @@ class Comment(models.Model):
     revision = models.PositiveIntegerField()
     anchor = models.CharField(max_length=500, blank=True, help_text='Quoted phrase or measure/note reference')
     body = models.TextField()
+    license_code = models.CharField(max_length=30, blank=True)
     created = models.DateTimeField(auto_now_add=True)
     class Meta: ordering = ['created']
 

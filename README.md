@@ -31,14 +31,20 @@ No sample users, passwords, or compositions are created automatically. The datab
 - During frozen review, the author can request rework; two distinct experienced reviewers must approve returning it to development. Returning clears approvals and author sign-off.
 - A change to one draft section requires fresh approvals for that section, retains the other sections' approvals, and clears author sign-off.
 - Approval counts ignore inactive or demoted reviewers. All approval and permission checks run on the server. Administrator workflow records are read-only so the administration UI cannot skip the gates.
-- Opening an editor automatically acquires a 15-minute lock without leaving the page. Another person can comment while it is locked. Renewal is manual. Saving also works without a separate lock step when no other editor holds an active lock. Stale submissions and conflicting locks are rejected with the submitted text kept in the open editor; stale section revisions must be compared with the latest version before retrying.
-- Text selection can populate a comment's quoted phrase. Clicking notation can populate a tune character reference. Comments retain the discussed section revision; they do not follow later edits. Revision snapshots are retained in the database and are visible to administrators.
+- Text and melody changes autosave about one second after a pause. A small status shows unsaved/saving/saved state; Save now remains available. A three-second poll displays saved edits and comments in other browsers. This is not character-level simultaneous editing: one person writes each section at a time, while different sections can be edited independently. A quiet 30-second reservation is renewed every ten seconds while an editor is open and released when a clean editor closes. A disconnected editor times out. Stale section revisions cannot overwrite newer text; conflicts show both versions for comparison. Navigation warns about unsaved text. Review approvals remain tied to the version originally viewed; refresh is required after edits.
+- Comments appear in a collapsible sidebar on desktop and below the composition on small screens. Text selection populates a quoted phrase. Unique exact quotations are highlighted on the discussed revision; clicking them opens the corresponding comment. Repeated or overlapping quotations are kept in the sidebar rather than guessing an attachment. Clicking notation populates a tune character reference. Comments retain the discussed revision and do not follow later edits. Revision snapshots are retained in the database and visible to administrators.
+
+## Contributor agreement and content licensing
+
+New applications require separate fellowship and licensing checkboxes. The fellowship text is explicitly provisional and lives in `songs/policy.py`. Agreement version and timestamp are recorded, with these fields read-only in the administration interface. Existing members are asked to accept before making new contributions; old content is not automatically relicensed. Authors can explicitly confirm the sharing licence for their existing sections using the section’s sharing control. New saved composition revisions and public comments record CC BY 4.0. Publication records CC BY-ND 4.0 for the approved edition, but cannot remove CC BY rights already granted. All sections need recorded licensing metadata before publication. Private applications and website software are outside this content policy. See `/licensing/` for the public explanation and links to Creative Commons. If the agreement text changes materially, change its version so contributors must accept the new text.
 
 ## Melody prototype
 
 The initial editor supports adding natural notes and rests with eighth, quarter, half, and whole-note durations, plus bar lines and undo, with C-major notation rendered by locally vendored **abcjs 6.7.1**. Preview uses the browser's Web Audio API with a synthesized tone, without fetching soundfonts. Clicking a displayed note populates the comment reference.
 
 This is a melody sketchpad, not yet a full sheet-music editor. ABC source can be edited directly, but the simple audio preview only supports natural pitches, octave markers, rests, and durations. Other keys, accidentals, ties, repeats, meter validation, changing/deleting individual notes graphically, lyric alignment, MusicXML import/export, and print/PDF export remain to be implemented. Advanced ABC may render correctly without playing correctly. The source editor and note buttons make this limitation explicit.
+
+A researched integration path for a full visual editor is in [docs/music-editor.md](docs/music-editor.md). The Smoosic integration has not been implemented.
 
 abcjs project: https://github.com/paulrosen/abcjs. Its MIT license is included alongside the vendored file. Typography optionally loads Google Fonts; system fonts are used when offline.
 
@@ -48,12 +54,22 @@ abcjs project: https://github.com/paulrosen/abcjs. Its MIT license is included a
 python manage.py check
 python manage.py test
 node --check songs/static/songs/melody.js
+node --check songs/static/songs/editing.js
 ```
 
-Tests exercise approvals, independence from the author, role restrictions, lock expiry, stale revisions, frozen edits, return-to-development voting, private application details, pending accounts, registration, CSRF enforcement, and public page rendering. Browser layout, notation interaction, and audio still require manual browser testing.
+Optional two-browser Chrome smoke test, using a temporary database that is deleted afterwards:
+
+```sh
+npm install --prefix /tmp/songhymn-browser-check --cache /tmp/songhymn-npm-cache playwright
+NODE_PATH=/tmp/songhymn-browser-check/node_modules .venv/bin/python scripts/browser_smoke.py
+```
+
+This uses Chrome on macOS by default; set `CHROME_PATH` to your Chrome executable elsewhere. It checks autosave, live viewing, editing presence, independent sections, handoff, live comments, quotation markers, melody autosave, mobile overflow, and browser JavaScript errors.
+
+Tests exercise approvals, independence from the author, role restrictions, lock expiry, stale revisions, frozen edits, return-to-development voting, private application details, pending accounts, registration, CSRF enforcement, and public page rendering. The autosave and comments interface is also checked in two isolated headless Chrome sessions. Audio quality and the musical correctness of scores still require listening and manual testing.
 
 ## Before public hosting
 
 This is a local foundation, not a deployed service. Hosting configuration, HTTPS, email verification and password-reset delivery, login/application throttling, database backups, and production asset serving remain to be configured. Set `DEBUG=0`, a private `SECRET_KEY`, and explicit `ALLOWED_HOSTS` for deployment. Use PostgreSQL before supporting concurrent writers in production: workflow transactions use row locking, which SQLite does not implement. Configure secure session/CSRF cookies with HTTPS at deployment.
 
-Other follow-up work includes a richer score editor, revision comparisons and annotation navigation, resolving critical review issues, membership notification emails, search, published song print layouts, the public “we sang this” count, and an agreed policy for credit and publication licensing. No license for the project's own code or compositions has been assumed.
+Other follow-up work includes a richer score editor, revision comparisons and annotation navigation, resolving critical review issues, membership notification emails, search, published song print layouts, the public “we sang this” count, and richer contributor attribution. The content licensing policy does not assign a software licence to the project code.

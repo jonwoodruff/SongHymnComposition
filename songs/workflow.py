@@ -3,6 +3,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.utils import timezone
 from .models import Song, Approval, Revision, EditLock, Membership
+from .policy import AGREEMENT_VERSION
 
 def role(user):
     if not user.is_authenticated or not user.is_active: return 'visitor'
@@ -25,36 +26,71 @@ def act(user, song_id, action, data):
     song = Song.objects.select_for_update().get(pk=song_id)
     r = role(user)
     if r not in ('commenter', 'contributor', 'reviewer'): raise PermissionDenied
-    require(str(song.revision) == data.get('song_revision'), 'This song changed since you opened it. Reload before continuing.')
-    if action in ('lock', 'save'):
+    if action in ('lock', 'autosave', 'release'):
+        require(song.stage == data.get('stage'), 'The review stage changed. Please reload before editing.')
+    else:
+        require(str(song.revision) == data.get('song_revision'), 'This song changed since you opened it. Reload before continuing.')
+    if action in ('save', 'autosave', 'comment', 'license'):
+        require(Membership.objects.filter(user=user, agreement_version=AGREEMENT_VERSION, agreement_accepted_at__isnull=False).exists(),
+                'Please read and accept the contributor agreement before contributing.')
+    if action in ('lock', 'save', 'autosave', 'release'):
         if not can_edit(user, song): raise PermissionDenied
+        require(data.get('scope') in ('concept', 'lyrics', 'tune'), 'Choose a valid section.')
         part = song.parts.get(kind=data.get('scope'))
         lock = EditLock.objects.filter(part=part).first()
+        if action == 'release':
+            EditLock.objects.filter(part=part, user=user).delete()
+            return
         if action == 'lock':
-            require(not lock or lock.expires <= timezone.now() or lock.user_id == user.pk, 'Someone else holds this editing lock.')
-            EditLock.objects.update_or_create(part=part, defaults={'user':user, 'expires':timezone.now()+timedelta(minutes=15)})
+            require(not lock or lock.expires <= timezone.now() or lock.user_id == user.pk, 'Someone else is editing this section. You can follow their changes here.')
+            EditLock.objects.update_or_create(part=part, defaults={'user':user, 'expires':timezone.now()+timedelta(seconds=30)})
             return
         require(not lock or lock.expires <= timezone.now() or lock.user_id == user.pk,
-                'Someone else holds this editing lock. Your text has been kept below; try again when they finish.')
+                'Someone else is editing this section. Your text has been kept; try again when they finish.')
         require(str(part.revision) == data.get('revision'), 'This section changed. Reload before saving.')
-        content = data.get('content','').strip()
+        content = data.get('content','').replace('\r\n','\n').replace('\r','\n').strip()
         require(bool(content), 'Please provide content.')
+        if content == part.content:
+            return
         part.content = content
+        part.license_code = 'CC-BY-4.0'
         part.revision += 1
         part.save()
-        Revision.objects.create(part=part, number=part.revision, content=content, editor=user)
+        Revision.objects.create(part=part, number=part.revision, content=content, editor=user, license_code=part.license_code)
         song.revision += 1
         song.author_signed = False
         song.save()
-        if lock:
+        if action == 'autosave':
+            EditLock.objects.update_or_create(part=part, defaults={'user': user, 'expires': timezone.now()+timedelta(seconds=30)})
+        elif lock:
             lock.delete()
+    elif action == 'license':
+        require(song.stage == 'draft' and song.author_id == user.pk,
+                'Only the author can offer an existing draft under the composition licence.')
+        require(data.get('scope') in ('concept','lyrics','tune'), 'Choose a valid section.')
+        require(data.get('rights_confirmed') == 'on', 'Confirm that you have the rights to license this section.')
+        part = song.parts.get(kind=data['scope'])
+        require(part.content.strip(), 'Add content to this section first.')
+        require(not EditLock.objects.filter(part=part, expires__gt=timezone.now()).exclude(user=user).exists(),
+                'Someone else is editing this section. Please wait until they finish.')
+        if not part.license_code:
+            part.license_code = 'CC-BY-4.0'
+            part.revision += 1
+            part.save()
+            Revision.objects.create(part=part, number=part.revision, content=part.content,
+                                    editor=user, license_code=part.license_code)
+            song.revision += 1
+            song.author_signed = False
+            song.save()
     elif action == 'comment':
         scope = data.get('scope')
         require(scope in ('concept','lyrics','tune','review'), 'Choose a valid discussion area.')
         body = data.get('body','').strip()
         require(bool(body), 'Please write a comment.')
         rev = song.revision if scope == 'review' else song.parts.get(kind=scope).revision
-        song.comments.create(user=user, scope=scope, revision=rev, anchor=data.get('anchor','')[:500], body=body)
+        if data.get('part_revision'):
+            require(str(rev) == data['part_revision'], 'This section changed while you were commenting. Your comment is still in the form; select the phrase again.')
+        song.comments.create(user=user, scope=scope, revision=rev, anchor=data.get('anchor','')[:500], body=body, license_code='CC-BY-4.0')
     elif action == 'sign':
         require(song.stage == 'draft' and song.author_id == user.pk, 'Only the author can sign off a draft.')
         song.author_signed = True
@@ -81,6 +117,8 @@ def act(user, song_id, action, data):
     elif action == 'publish':
         if r != 'reviewer': raise PermissionDenied
         require(song.stage=='frozen' and count(song,'publish',song.revision,True)>=5, 'Five independent experienced approvals are required for this revision.')
+        require(all(p.license_code == 'CC-BY-4.0' for p in song.parts.all()), 'Record licence consent for each section before publication.')
+        song.publication_license_code='CC-BY-ND-4.0'
         song.stage='published'
         song.save()
     elif action == 'request_rework':

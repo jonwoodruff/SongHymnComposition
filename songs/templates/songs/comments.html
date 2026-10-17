@@ -1,0 +1,8 @@
+{% for comment in comments %}
+<details class="comment-bubble" id="comment-{{ comment.pk }}" data-comment="{{ comment.pk }}" open>
+  <summary><span class="comment-dot"></span><strong>{{ comment.user.username }}</strong><span class="comment-scope">{{ comment.get_scope_display }}</span></summary>
+  <div class="comment-content"><small>Revision {{ comment.revision }} · {{ comment.created|date:'j M, H:i' }}</small>
+  {% if comment.anchor %}<blockquote>{{ comment.anchor }}</blockquote>{% endif %}
+  <p>{{ comment.body|linebreaksbr }}</p>{% if comment.license_code %}<small><a href="https://creativecommons.org/licenses/by/4.0/" rel="license">CC BY 4.0</a></small>{% endif %}</div>
+</details>
+{% empty %}<p class="muted">A thought, a question, a word of encouragement. Start the conversation.</p>{% endfor %}

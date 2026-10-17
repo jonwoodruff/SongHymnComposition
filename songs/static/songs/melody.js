@@ -31,12 +31,13 @@
     const paper=document.createElement('div');container.append(paper);
     if (window.ABCJS) ABCJS.renderAbc(paper,abc,{responsive:'resize',clickListener:(element)=>{
       const anchor=document.querySelector('#comment-anchor'),scope=document.querySelector('#comment-scope');
-      if(anchor && element.startChar !== undefined) {anchor.value=`Tune characters ${element.startChar}–${element.endChar}: ${abc.slice(element.startChar,element.endChar)}`;scope.value='tune';}
+      if(anchor && element.startChar !== undefined) {anchor.value=`Tune characters ${element.startChar}–${element.endChar}: ${abc.slice(element.startChar,element.endChar)}`;scope.value='tune';window.dispatchEvent(new Event('comment:anchor'));}
     }});
     else paper.textContent='Notation renderer unavailable. Melody source is preserved.';
     const playButton=document.createElement('button');playButton.type='button';playButton.textContent='▶ Play melody';playButton.onclick=()=>play(abc);container.append(playButton);
     const stop=document.createElement('button');stop.type='button';stop.textContent='■ Stop';stop.onclick=()=>{if(audio) audio.close();audio=null;};container.append(stop);
   }
+  window.addEventListener('melody:refresh',event=>preview(event.detail.container,event.detail.content));
   document.querySelectorAll('.music-display').forEach(el=>{if(el.dataset.content) preview(el,el.dataset.content);else el.textContent='No melody yet.';});
   document.querySelectorAll('.part-editor[data-kind="tune"]').forEach(form=>{
     const field=form.querySelector('textarea');
@@ -47,15 +48,10 @@
     [['/2','Eighth note'],['','Quarter note'],['2','Half note'],['4','Whole note']].forEach(([value,text])=>{const option=new Option(text,value);duration.add(option);});duration.value='';tools.append(duration);
     const buttons=document.createElement('div');buttons.className='note-buttons';tools.append(buttons);
     const history=[];const canvas=document.createElement('div');tools.append(canvas);
-    function add(token){history.push(field.value);field.value += token+' ';preview(canvas,field.value);}
+    function add(token){history.push(field.value);field.value += token+' ';preview(canvas,field.value);field.dispatchEvent(new Event('input',{bubbles:true}));}
     ['C','D','E','F','G','A','B','c','d','e','f','g','z','|'].forEach(note=>{const b=document.createElement('button');b.type='button';b.textContent=note==='z'?'Rest':note==='|'?'Bar line':note===note.toLowerCase()?note.toUpperCase()+' ↑':note;b.onclick=()=>add(note+(note==='|'?'':duration.value));buttons.append(b);});
-    const undo=document.createElement('button');undo.type='button';undo.textContent='Undo last addition';undo.onclick=()=>{if(history.length){field.value=history.pop();preview(canvas,field.value);}};buttons.append(undo);
+    const undo=document.createElement('button');undo.type='button';undo.textContent='Undo last addition';undo.onclick=()=>{if(history.length){field.value=history.pop();preview(canvas,field.value);field.dispatchEvent(new Event('input',{bubbles:true}));}};buttons.append(undo);
+    field.addEventListener('melody:updated',()=>preview(canvas,field.value));
     field.addEventListener('input',()=>preview(canvas,field.value));preview(canvas,field.value);
   });
-  document.querySelectorAll('.panel .prose').forEach(el=>el.addEventListener('mouseup',()=>{
-    const selection=window.getSelection();const text=selection.toString().trim();
-    if(!text || !el.contains(selection.anchorNode)||!el.contains(selection.focusNode))return;
-    const anchor=document.querySelector('#comment-anchor');const scope=document.querySelector('#comment-scope');
-    if(anchor){anchor.value=text.slice(0,500);const heading=el.closest('.panel').querySelector('h2').textContent.toLowerCase();if(['concept','lyrics'].includes(heading))scope.value=heading;}
-  }));
 })();
