@@ -38,6 +38,18 @@ No sample users, passwords, or compositions are created automatically. The datab
 
 New applications require separate fellowship and licensing checkboxes. The fellowship text is explicitly provisional and lives in `songs/policy.py`. Agreement version and timestamp are recorded, with these fields read-only in the administration interface. Existing members are asked to accept before making new contributions; old content is not automatically relicensed. Authors can explicitly confirm the sharing licence for their existing sections using the section’s sharing control. New saved composition revisions and public comments record CC BY 4.0. Publication records CC BY-ND 4.0 for the approved edition, but cannot remove CC BY rights already granted. All sections need recorded licensing metadata before publication. Private applications and website software are outside this content policy. See `/licensing/` for the public explanation and links to Creative Commons. If the agreement text changes materially, change its version so contributors must accept the new text.
 
+## Uploaded recordings
+
+The tune section has an **Add or replace a tune recording** control. A recording appears alongside the synthesized preview with play/pause, volume, seeking, and a download link. It can also be used as the tune when notation has not been entered. Uploading, replacing, or removing a tune recording follows the existing author/reviewer editing rules and advances the tune and song revisions, clearing author sign-off and requiring fresh tune or publication approvals. Earlier recordings remain stored with their revision snapshots. Editing notation retains the attached recording.
+
+Approved members can attach one recording to a comment, with or without text. These recordings appear in the sidebar and can be heard by public visitors. New live comments preserve existing player elements, so they do not interrupt playback. Starting another recording or the synthesized preview pauses the previous player.
+
+Supported files: **MP3, M4A, WAV, OGG (Vorbis/Opus), and FLAC**, up to **25 MB per file**. Mutagen checks audio metadata and format; the original file is retained rather than transcoded. Playback depends on the browser's support for the file's codec; a download link is always available. File controls only upload on explicit submission, not on text autosave. A failed upload keeps the selected file and accompanying text for correction.
+
+Recordings are public composition/comment contributions under the existing agreement; uploaders must have permission to share them, including any performances by others. Licence badges remain on Lyrics and Tune, not comments.
+
+Files are stored in `media/` (or the `MEDIA_ROOT` environment setting), excluded from Git along with the database. Audio is served through `/recordings/<uuid>/` with a validated audio content type, generated filenames, and byte-range support. Back up the media directory **and** database together. On a hosted installation, configure persistent media storage and an upstream request-size limit to match the 25 MB application limit. Files are retained for revision history; there is not yet a storage-quota or archival-purge interface.
+
 ## Melody prototype
 
 The initial editor supports adding natural notes and rests with eighth, quarter, half, and whole-note durations, plus bar lines and undo, with C-major notation rendered by locally vendored **abcjs 6.7.1**. Preview uses the browser's Web Audio API with a synthesized tone, without fetching soundfonts. Clicking a displayed note populates the comment reference.

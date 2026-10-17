@@ -1,4 +1,6 @@
+import uuid
 from django.conf import settings
+from .audio import recording_path
 from django.db import models
 
 class Membership(models.Model):
@@ -22,7 +24,22 @@ class Song(models.Model):
     updated = models.DateTimeField(auto_now=True)
     def __str__(self): return self.title
 
+class Recording(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    song = models.ForeignKey(Song, on_delete=models.CASCADE, related_name='recordings')
+    uploader = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    file = models.FileField(upload_to=recording_path)
+    media_type = models.CharField(max_length=40)
+    original_name = models.CharField(max_length=200)
+    size = models.PositiveIntegerField()
+    created = models.DateTimeField(auto_now_add=True)
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse('recording', args=[self.pk])
+
 class Part(models.Model):
+    recording = models.ForeignKey(Recording, null=True, blank=True, on_delete=models.PROTECT, related_name='+')
     song = models.ForeignKey(Song, on_delete=models.CASCADE, related_name='parts')
     kind = models.CharField(max_length=10, choices=[('concept', 'Concept'), ('lyrics', 'Lyrics'), ('tune', 'Tune')])
     content = models.TextField(blank=True)
@@ -32,6 +49,7 @@ class Part(models.Model):
         constraints = [models.UniqueConstraint(fields=['song', 'kind'], name='unique_song_part')]
 
 class Revision(models.Model):
+    recording = models.ForeignKey(Recording, null=True, blank=True, on_delete=models.PROTECT, related_name='+')
     part = models.ForeignKey(Part, on_delete=models.CASCADE, related_name="history")
     number = models.PositiveIntegerField()
     license_code = models.CharField(max_length=30, blank=True)
@@ -48,6 +66,7 @@ class Approval(models.Model):
         constraints = [models.UniqueConstraint(fields=['song', 'user', 'scope', 'revision'], name='unique_approval')]
 
 class Comment(models.Model):
+    recording = models.OneToOneField(Recording, null=True, blank=True, on_delete=models.PROTECT, related_name='+')
     song = models.ForeignKey(Song, on_delete=models.CASCADE, related_name='comments')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     scope = models.CharField(max_length=12, choices=[('concept','Concept'),('lyrics','Lyrics'),('tune','Tune'),('review','Frozen review')])

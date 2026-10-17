@@ -9,6 +9,9 @@
   let commentVersion = '';
   let polling = false;
   const commentForm = document.querySelector('#comment-form');
+  const recordingForm = document.querySelector('#tune-recording-form');
+  let recordingUploadBusy = false;
+  let commentBusy = false;
   const editors = [...document.querySelectorAll('.part-editor')].map(form => ({
     form, panel: form.closest('.composition-part'), details: form.closest('details'),
     field: form.querySelector('[name=content]'), status: form.querySelector('.editor-status'),
@@ -76,9 +79,15 @@
     }
     const list = document.querySelector('#comment-list');
     if(commentVersion !== state.comments_html) {
-      const closed=new Set([...list.querySelectorAll('details:not([open])')].map(el=>el.id));
-      list.innerHTML=state.comments_html; // Escaped server-rendered template, never raw user HTML.
-      closed.forEach(id=>{const el=document.getElementById(id);if(el) el.open=false;});
+      // Preserve existing comment nodes so a playing recording is not interrupted.
+      const template=document.createElement('template');
+      template.innerHTML=state.comments_html; // Escaped server-rendered template.
+      const incoming=[...template.content.querySelectorAll('[data-comment]')];
+      if(incoming.length) {
+        const ids=new Set(incoming.map(el=>el.id));
+        [...list.children].forEach(el=>{if(!ids.has(el.id))el.remove();});
+        incoming.forEach(el=>{if(!document.getElementById(el.id))list.append(el);});
+      } else if(list.querySelector('[data-comment]')) list.replaceChildren(template.content);
       commentVersion=state.comments_html;
     }
     state.parts.forEach(part=>{
@@ -96,6 +105,22 @@
         credit.append(link,document.createTextNode(' · credit the contributors'));
       }
       if(part.kind==='tune') {
+        const recording=panel.querySelector('.tune-recording');
+        const audio=recording.querySelector('audio');
+        const url=part.recording?.url || '';
+        if(recording.dataset.recordingUrl!==url) {
+          audio.pause();
+          if(url)audio.src=url;else audio.removeAttribute('src');
+          audio.load();recording.dataset.recordingUrl=url;
+        }
+        recording.hidden=!url;
+        recording.querySelector('.recording-name').textContent=part.recording?.name || '';
+        const download=recording.querySelector('.recording-download');
+        if(url)download.href=url;else download.removeAttribute('href');
+        if(recordingForm) {
+          recordingForm.querySelector('.remove-recording').hidden=!url;
+          if(!recordingUploadBusy && !recordingForm.elements.recording.files.length)recordingForm.elements.revision.value=part.revision;
+        }
         const display=panel.querySelector('.music-display');
         if(display.dataset.content!==part.content) {
           display.dataset.content=part.content;
@@ -115,7 +140,9 @@
           }
         }
         editor.form.elements.song_revision.value=state.revision;
-        if(state.stage!==initialStage || !state.can_edit) {
+        if(recordingUploadBusy && part.kind==='tune') {
+          editor.field.readOnly=true;
+        } else if(state.stage!==initialStage || !state.can_edit) {
           editor.ready=false;editor.field.readOnly=true;
           editor.status.textContent='Editing permissions or review stage changed. Keep a copy of any unsaved text, then refresh.';
         } else if(part.editor && !part.editing_here && !dirty(editor)) {
@@ -159,6 +186,7 @@
   }
   async function save(editor) {
     if(editor.busy || editor.conflict || !dirty(editor)) return;
+    if(recordingUploadBusy && editor.panel.dataset.kind==='tune'){schedule(editor);return;}
     if(!editor.field.value.trim()) {editor.status.textContent='Add some text to save this section.';return;}
     editor.busy=true;editor.status.textContent='Saving…';
     const content=editor.field.value;
@@ -267,7 +295,7 @@
     // Preserve the selection when the floating action is clicked with a mouse.
     action.addEventListener('pointerdown',event=>event.preventDefault());
     action.onclick=()=>{
-      if(!selected)return;
+      if(!selected || commentBusy)return;
       const anchor=selected;
       commentForm.elements.anchor.value=anchor.text;
       commentForm.elements.scope.value=anchor.scope;
@@ -292,19 +320,69 @@
     commentForm.elements.scope.onchange=()=>{commentForm.elements.anchor.value='';setCommentRevision();};
     commentForm.elements.anchor.addEventListener('input',setCommentRevision);
     commentForm.addEventListener('submit',async event=>{
-      event.preventDefault();const status=document.querySelector('#comment-status');
+      event.preventDefault();if(commentBusy)return;const status=document.querySelector('#comment-status');
+      if(!commentForm.elements.body.value.trim() && !commentForm.elements.recording.files.length){status.textContent='Write a comment or attach a recording.';return;}
+      if(commentForm.elements.recording.files[0]?.size > 25*1024*1024){status.textContent='Recordings can be up to 25 MB.';return;}
+      commentBusy=true;commentForm.querySelector('button').disabled=true;
       if(!commentForm.elements.anchor.value)setCommentRevision();
       status.textContent='Sharing…';
+      const payload=new FormData(commentForm);
+      commentForm.querySelectorAll('input,textarea,select').forEach(control=>control.disabled=true);
       try {
-        const state=await post(new FormData(commentForm));
-        commentForm.elements.body.value='';commentForm.elements.anchor.value='';
+        const state=await post(payload);
+        commentForm.elements.body.value='';commentForm.elements.anchor.value='';commentForm.elements.recording.value='';
         commentForm.elements.part_revision.value='';
         status.textContent='Your thought has been shared.';applyState(state);
       } catch(error) {status.textContent=error.message;}
+      finally {commentBusy=false;commentForm.querySelectorAll('input,textarea,select,button').forEach(control=>control.disabled=false);}
     });
   }
+  if(recordingForm) {
+    recordingForm.elements.recording.addEventListener('change',()=>{
+      recordingForm.elements.revision.value=document.querySelector('#part-tune').dataset.revision;
+    });
+    recordingForm.addEventListener('submit',async event=>{
+      event.preventDefault();if(recordingUploadBusy)return;
+      const action=event.submitter?.value || 'recording';
+      const status=recordingForm.querySelector('.recording-status');
+      const file=recordingForm.elements.recording.files[0];
+      if(action==='recording' && !file){status.textContent='Choose a recording first.';return;}
+      if(action==='recording' && file.size>25*1024*1024){status.textContent='Recordings can be up to 25 MB.';return;}
+      const editor=editors.find(e=>e.panel.dataset.kind==='tune');
+      if(editor && (editor.busy || editor.conflict)) {status.textContent='Finish saving or comparing your tune changes first.';return;}
+      if(editor && dirty(editor)) {
+        await save(editor);
+        if(dirty(editor)){status.textContent='Your tune changes must finish saving first.';return;}
+        recordingForm.elements.revision.value=editor.form.elements.revision.value;
+      }
+      const data=new FormData(recordingForm);data.set('action',action);
+      if(action==='remove_recording')data.delete('recording');
+      recordingUploadBusy=true;
+      if(editor)editor.field.readOnly=true;
+      recordingForm.querySelectorAll('button,input[type=file]').forEach(b=>b.disabled=true);
+      status.textContent=action==='recording'?'Uploading recording…':'Removing recording…';
+      try {
+        const state=await post(data);
+        recordingForm.elements.recording.value='';
+        recordingUploadBusy=false;
+        applyState(state);
+        status.textContent=action==='recording'?'Recording uploaded.':'Recording removed.';
+      } catch(error) {status.textContent=error.message;}
+      finally {
+        recordingUploadBusy=false;
+        recordingForm.querySelectorAll('button,input[type=file]').forEach(b=>b.disabled=false);
+        // Poll restores the correct permission state after a failed upload.
+        await poll();
+      }
+    });
+  }
+  document.addEventListener('play',event=>{
+    if(!(event.target instanceof HTMLAudioElement))return;
+    document.querySelectorAll('audio').forEach(audio=>{if(audio!==event.target)audio.pause();});
+    window.dispatchEvent(new Event('playback:recording'));
+  },true);
   window.addEventListener('beforeunload',event=>{
-    if(editors.some(e=>dirty(e)||e.busy) || commentForm?.elements.body.value.trim()) {event.preventDefault();event.returnValue='';}
+    if(recordingUploadBusy || commentBusy || recordingForm?.elements.recording.files.length || editors.some(e=>dirty(e)||e.busy) || commentForm?.elements.body.value.trim() || commentForm?.elements.recording.files.length) {event.preventDefault();event.returnValue='';}
   });
   setInterval(poll,3000);
   setInterval(()=>editors.forEach(reserve),10000);

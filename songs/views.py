@@ -47,7 +47,7 @@ def detail(request,pk):
     failed_save = None
     if request.method=='POST':
         if not request.user.is_authenticated: return redirect('login')
-        try: act(request.user,song.pk,request.POST.get('action'),request.POST)
+        try: act(request.user,song.pk,request.POST.get('action'),request.POST,request.FILES)
         except PermissionDenied:
             if request.headers.get('Accept') == 'application/json':
                 return JsonResponse({'error': 'You do not currently have permission to edit this section.'}, status=403)
@@ -70,7 +70,7 @@ def detail(request,pk):
             messages.success(request,'Saved.')
             return redirect('detail',pk=pk)
         song.refresh_from_db()
-    parts=list(song.parts.all().order_by('id'))
+    parts=list(song.parts.select_related('recording').all().order_by('id'))
     for part in parts:
         part.approval_count=count(song,part.kind,part.revision)
         part.editor_content = part.content
@@ -81,7 +81,7 @@ def detail(request,pk):
             part.edit_revision = failed_save.get('revision', '')
         else:
             part.edit_revision = str(part.revision)
-    return render(request,'songs/detail.html',{'song':song,'parts':parts,'can_edit':can_edit(request.user,song),'can_comment':role(request.user) in ('commenter','contributor','reviewer'),'reviewer':role(request.user)=='reviewer','is_author':request.user.pk==song.author_id,'publication_count':count(song,'publish',song.revision,True),'comments':song.comments.select_related('user'), 'contributors': sorted({song.author.username, *Revision.objects.filter(part__song=song).values_list('editor__username', flat=True)}), 'failed_save':failed_save, 'needs_agreement':request.user.is_authenticated and not has_agreement(request.user)}, status=409 if failed_save else 200)
+    return render(request,'songs/detail.html',{'song':song,'parts':parts,'can_edit':can_edit(request.user,song),'can_comment':role(request.user) in ('commenter','contributor','reviewer'),'reviewer':role(request.user)=='reviewer','is_author':request.user.pk==song.author_id,'publication_count':count(song,'publish',song.revision,True),'comments':song.comments.select_related('user','recording'), 'contributors': sorted({song.author.username, *Revision.objects.filter(part__song=song).values_list('editor__username', flat=True)}), 'failed_save':failed_save, 'needs_agreement':request.user.is_authenticated and not has_agreement(request.user)}, status=409 if failed_save else 200)
 
 
 def has_agreement(user):
@@ -107,14 +107,15 @@ def song_state(request, pk):
     with transaction.atomic():
         song = get_object_or_404(Song, pk=pk)
         parts = []
-        for part in song.parts.all().order_by('id'):
+        for part in song.parts.select_related('recording').all().order_by('id'):
             lock = getattr(part, 'editlock', None)
             active = lock and lock.expires > timezone.now()
             parts.append({'kind':part.kind, 'content':part.content.replace('\r\n','\n').replace('\r','\n'), 'revision':part.revision,
                 'approvals':count(song,part.kind,part.revision), 'license':part.license_code,
+                'recording': {'url':part.recording.get_absolute_url(), 'name':part.recording.original_name, 'type':part.recording.media_type} if part.recording_id else None,
                 'editor':lock.user.username if active else None,
                 'editing_here':bool(active and lock.user_id==request.user.pk)})
-        comments = list(song.comments.select_related('user'))
+        comments = list(song.comments.select_related('user','recording'))
         return {'revision':song.revision, 'stage':song.stage, 'stage_label':song.get_stage_display(),
             'can_edit':can_edit(request.user,song), 'parts':parts,
             'contributors':sorted({song.author.username, *Revision.objects.filter(part__song=song).values_list('editor__username',flat=True)}),

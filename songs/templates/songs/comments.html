@@ -3,6 +3,7 @@
   <summary><span class="comment-dot"></span><strong>{{ comment.user.username }}</strong><span class="comment-scope">{{ comment.get_scope_display }}</span></summary>
   <div class="comment-content"><small>Revision {{ comment.revision }} · {{ comment.created|date:'j M, H:i' }}</small>
   {% if comment.anchor %}<blockquote>{{ comment.anchor }}</blockquote>{% endif %}
-  <p>{{ comment.body|linebreaksbr }}</p></div>
+  {% if comment.body %}<p>{{ comment.body|linebreaksbr }}</p>{% endif %}
+  {% if comment.recording_id %}<div class="comment-recording"><audio controls preload="none" src="{{ comment.recording.get_absolute_url }}" aria-label="Recording from {{ comment.user.username }}"></audio><a href="{{ comment.recording.get_absolute_url }}" download>Download recording</a></div>{% endif %}</div>
 </details>
 {% empty %}<p class="muted">A thought, a question, a word of encouragement. Start the conversation.</p>{% endfor %}

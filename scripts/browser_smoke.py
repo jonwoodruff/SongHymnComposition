@@ -14,6 +14,7 @@ with tempfile.TemporaryDirectory(prefix='songhymn-browser-') as folder:
     (temporary / 'browser_settings.py').write_text(
         'from config.settings import *\n'
         f"DATABASES = {{'default': {{'ENGINE':'django.db.backends.sqlite3','NAME':{str(temporary / 'db.sqlite3')!r},'OPTIONS':{{'timeout':10}}}}}}\n"
+        f"MEDIA_ROOT = {str(temporary / 'media')!r}\n"
         "PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']\n"
     )
     env = dict(os.environ, DJANGO_SETTINGS_MODULE='browser_settings',

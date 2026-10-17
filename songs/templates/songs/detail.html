@@ -12,6 +12,22 @@
   <div class="section-heading"><h2>{{ part.get_kind_display }}</h2><span class="approval-count">{{ part.approval_count }}/2 experienced approvals</span></div>
   {% if part.kind == 'tune' %}<div class="music-display" data-content="{{ part.content }}"></div>
   {% else %}<div class="prose annotated-text" data-scope="{{ part.kind }}" data-revision="{{ part.revision }}">{{ part.content }}</div>{% if not part.content %}<p class="empty-hint muted">Waiting for the first contribution.</p>{% endif %}{% endif %}
+  {% if part.kind == 'tune' %}
+  <div class="tune-recording"{% if not part.recording_id %} hidden{% endif %} data-recording-url="{% if part.recording_id %}{{ part.recording.get_absolute_url }}{% endif %}">
+    <h3>Recorded tune</h3><p class="recording-name">{% if part.recording_id %}{{ part.recording.original_name }}{% endif %}</p>
+    <audio controls preload="none"{% if part.recording_id %} src="{{ part.recording.get_absolute_url }}"{% endif %} aria-label="Recorded tune"></audio>
+    <a class="recording-download"{% if part.recording_id %} href="{{ part.recording.get_absolute_url }}"{% endif %} download>Download recording</a>
+  </div>
+  {% if can_edit %}<details class="recording-editor"><summary>Add or replace a tune recording</summary>
+    <form method="post" enctype="multipart/form-data" id="tune-recording-form">
+    {% csrf_token %}<input type="hidden" name="stage" value="{{ song.stage }}"><input type="hidden" name="revision" value="{{ part.revision }}"><input type="hidden" name="scope" value="tune"><input type="hidden" name="song_revision" value="{{ song.revision }}">
+    <label for="tune-recording-file">Tune recording</label><input type="file" id="tune-recording-file" name="recording" accept=".mp3,.m4a,.wav,.ogg,.flac,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/flac" aria-describedby="tune-recording-help">
+    <p class="muted" id="tune-recording-help">MP3, M4A, WAV, OGG, or FLAC · up to 25 MB. Upload a recording you have permission to share. It will be publicly playable.</p>
+    <p class="recording-status muted" role="status"></p><button name="action" value="recording">Upload recording</button>
+    <button class="quiet remove-recording" name="action" value="remove_recording"{% if not part.recording_id %} hidden{% endif %}>Remove recording</button>
+    </form>
+  </details>{% endif %}
+  {% endif %}
   <p class="presence muted" role="status"></p>
   {% if can_edit %}
   <details class="section-editor"{% if part.save_failed %} open{% endif %}>
@@ -63,11 +79,12 @@
 <div id="comment-list">{% include 'songs/comments.html' %}</div>
 {% if can_comment %}
 <details class="comment-composer" open><summary>Add a thought</summary>
-<form method="post" id="comment-form">{% csrf_token %}
+<form method="post" enctype="multipart/form-data" id="comment-form">{% csrf_token %}
 <input type="hidden" name="song_revision" value="{{ song.revision }}"><input type="hidden" name="action" value="comment"><input type="hidden" name="part_revision" value="">
 <label>About<select name="scope" id="comment-scope"><option value="concept">Concept</option><option value="lyrics">Lyrics</option><option value="tune">Tune</option><option value="review">Frozen review</option></select></label>
 <label>Selected phrase or note<input name="anchor" id="comment-anchor" maxlength="500" placeholder="Optional"></label>
-<label>Your comment<textarea name="body" required rows="4"></textarea></label>
+<label>Your comment<textarea name="body" rows="4"></textarea></label>
+<label for="comment-recording-file">Attach a recording (optional)</label><input type="file" name="recording" id="comment-recording-file" accept=".mp3,.m4a,.wav,.ogg,.flac,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/flac" aria-describedby="comment-recording-help"><p class="muted" id="comment-recording-help">Up to 25 MB · publicly playable. Only upload recordings you have permission to share. Text is optional when attaching audio.</p>
 <p id="comment-status" role="status" class="muted"></p><button>Share thought</button>
 </form></details>
 {% else %}<p><a href="{% url 'join' %}">Join the table</a> to contribute.</p>{% endif %}

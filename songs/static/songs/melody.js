@@ -2,7 +2,9 @@
 (() => {
   const initial = 'X:1\nM:4/4\nL:1/4\nK:C\n';
   let audio;
+  window.addEventListener('playback:recording',()=>{if(audio){audio.close();audio=null;}});
   function play(abc) {
+    document.querySelectorAll('audio').forEach(recording=>recording.pause());
     if (audio) audio.close();
     audio = new (window.AudioContext || window.webkitAudioContext)();
     audio.resume();
@@ -48,9 +50,9 @@
     [['/2','Eighth note'],['','Quarter note'],['2','Half note'],['4','Whole note']].forEach(([value,text])=>{const option=new Option(text,value);duration.add(option);});duration.value='';tools.append(duration);
     const buttons=document.createElement('div');buttons.className='note-buttons';tools.append(buttons);
     const history=[];const canvas=document.createElement('div');tools.append(canvas);
-    function add(token){history.push(field.value);field.value += token+' ';preview(canvas,field.value);field.dispatchEvent(new Event('input',{bubbles:true}));}
+    function add(token){if(field.readOnly)return;history.push(field.value);field.value += token+' ';preview(canvas,field.value);field.dispatchEvent(new Event('input',{bubbles:true}));}
     ['C','D','E','F','G','A','B','c','d','e','f','g','z','|'].forEach(note=>{const b=document.createElement('button');b.type='button';b.textContent=note==='z'?'Rest':note==='|'?'Bar line':note===note.toLowerCase()?note.toUpperCase()+' ↑':note;b.onclick=()=>add(note+(note==='|'?'':duration.value));buttons.append(b);});
-    const undo=document.createElement('button');undo.type='button';undo.textContent='Undo last addition';undo.onclick=()=>{if(history.length){field.value=history.pop();preview(canvas,field.value);field.dispatchEvent(new Event('input',{bubbles:true}));}};buttons.append(undo);
+    const undo=document.createElement('button');undo.type='button';undo.textContent='Undo last addition';undo.onclick=()=>{if(field.readOnly)return;if(history.length){field.value=history.pop();preview(canvas,field.value);field.dispatchEvent(new Event('input',{bubbles:true}));}};buttons.append(undo);
     field.addEventListener('melody:updated',()=>preview(canvas,field.value));
     field.addEventListener('input',()=>preview(canvas,field.value));preview(canvas,field.value);
   });

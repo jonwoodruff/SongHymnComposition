@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Membership, Song, Part, Revision, Approval, Comment, EditLock
+from .models import Membership, Song, Part, Revision, Approval, Comment, EditLock, Recording
 @admin.register(Membership)
 class MembershipAdmin(admin.ModelAdmin):
     list_display=['user','interests','role','agreement_accepted_at']
@@ -12,5 +12,5 @@ class ReadOnlyAdmin(admin.ModelAdmin):
     def has_add_permission(self,request): return False
     def has_change_permission(self,request,obj=None): return False
     def has_delete_permission(self,request,obj=None): return False
-for model in (Song, Part, Revision, Approval, Comment, EditLock): admin.site.register(model,ReadOnlyAdmin)
+for model in (Song, Part, Revision, Approval, Comment, EditLock, Recording): admin.site.register(model,ReadOnlyAdmin)
 admin.site.site_header='Song & Hymn · Administration'
