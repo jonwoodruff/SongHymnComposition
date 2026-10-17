@@ -89,8 +89,9 @@
       const previousRevision=Number(panel.dataset.revision);
       panel.dataset.revision=part.revision;
       if(part.content) panel.querySelector('.empty-hint')?.remove();
-      if(part.license) {
-        const credit=panel.querySelector('.part-license');credit.replaceChildren();
+      const credit=panel.querySelector('.part-license');
+      if(part.license && credit) {
+        credit.replaceChildren();
         const link=document.createElement('a');link.href='https://creativecommons.org/licenses/by/4.0/';link.rel='license';link.textContent='CC BY 4.0';
         credit.append(link,document.createTextNode(' · credit the contributors'));
       }

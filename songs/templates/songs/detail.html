@@ -36,7 +36,7 @@
     <label><input type="checkbox" name="rights_confirmed" required>I have the rights to offer this whole section under CC BY 4.0 and authorize its inclusion in a published CC BY-ND edition.</label>
     <button name="action" value="license">Confirm sharing licence</button></form>
   </details>{% endif %}
-  <small class="part-license">{% if part.license_code %}<a href="https://creativecommons.org/licenses/by/4.0/" rel="license">CC BY 4.0</a> · credit the contributors{% else %}Existing material · licence consent not yet recorded{% endif %}</small>
+  {% if part.kind == 'lyrics' or part.kind == 'tune' %}<small class="part-license">{% if part.license_code %}<a href="https://creativecommons.org/licenses/by/4.0/" rel="license">CC BY 4.0</a> · credit the contributors{% else %}Existing material · licence consent not yet recorded{% endif %}</small>{% endif %}
 </section>
 {% endfor %}
 <section class="panel" id="review-panel">
