@@ -11,7 +11,7 @@
 <section class="panel composition-part" id="part-{{ part.kind }}" data-kind="{{ part.kind }}" data-revision="{{ part.revision }}">
   <div class="section-heading"><h2>{{ part.get_kind_display }}</h2><span class="approval-count">{{ part.approval_count }}/2 experienced approvals</span></div>
   {% if part.kind == 'tune' %}<div class="music-display" data-content="{{ part.content }}"></div>
-  {% else %}<div class="prose annotated-text" data-scope="{{ part.kind }}">{{ part.content }}</div>{% if not part.content %}<p class="empty-hint muted">Waiting for the first contribution.</p>{% endif %}{% endif %}
+  {% else %}<div class="prose annotated-text" data-scope="{{ part.kind }}" data-revision="{{ part.revision }}">{{ part.content }}</div>{% if not part.content %}<p class="empty-hint muted">Waiting for the first contribution.</p>{% endif %}{% endif %}
   <p class="presence muted" role="status"></p>
   {% if can_edit %}
   <details class="section-editor"{% if part.save_failed %} open{% endif %}>
@@ -59,7 +59,7 @@
 </div>
 <aside id="discussion" class="discussion-sidebar" aria-label="Comments">
 <div class="discussion-heading"><h2>Around the table</h2><button type="button" class="quiet" id="collapse-comments">Collapse all</button></div>
-<p class="muted">Select a phrase to discuss it, or click a note in the melody.</p>
+<p class="muted">Select a phrase and choose “Comment on selection”, or right-click the selected phrase. You can also click a note in the melody.</p>
 <div id="comment-list">{% include 'songs/comments.html' %}</div>
 {% if can_comment %}
 <details class="comment-composer" open><summary>Add a thought</summary>

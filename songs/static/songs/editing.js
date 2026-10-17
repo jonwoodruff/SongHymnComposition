@@ -54,7 +54,7 @@
       fragment.append(document.createTextNode(content.slice(cursor,a.start)));
       const mark=document.createElement('mark');mark.className='annotation';mark.tabIndex=0;
       mark.textContent=a.anchor;mark.setAttribute('role','button');mark.setAttribute('aria-label',`Read comment on ${a.anchor}`);
-      mark.onclick=()=>focusComment(a.id);mark.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();focusComment(a.id);}};
+      mark.onclick=()=>{if(!window.getSelection()?.toString().trim())focusComment(a.id);};mark.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();focusComment(a.id);}};
       fragment.append(mark);cursor=a.start+a.anchor.length;
     });
     fragment.append(document.createTextNode(content.slice(cursor)));
@@ -62,6 +62,7 @@
     const selection=window.getSelection();
     if(selection && !selection.isCollapsed && prose.contains(selection.anchorNode)) return;
     prose.replaceChildren(fragment);
+    prose.dataset.revision=revision;
   }
   function applyState(state) {
     if(state.revision < currentRevision) return;
@@ -218,15 +219,74 @@
     commentForm.elements.song_revision.value=currentRevision;
   }
   window.addEventListener('comment:anchor',setCommentRevision);
-  document.querySelectorAll('.annotated-text').forEach(prose=>prose.addEventListener('mouseup',()=>{
-    if(!commentForm) return;
-    const selection=window.getSelection();const text=selection.toString().trim();
-    if(!text || !prose.contains(selection.anchorNode)||!prose.contains(selection.focusNode))return;
-    commentForm.elements.anchor.value=text.slice(0,500);
-    commentForm.elements.scope.value=prose.dataset.scope;
-    setCommentRevision();
-    document.querySelector('.comment-composer').open=true;
-  }));
+  if(commentForm) {
+    const action=document.createElement('button');
+    action.type='button';action.className='selection-comment-action';
+    action.textContent='＋ Comment on selection';action.hidden=true;
+    action.setAttribute('aria-label','Comment on selection');
+    document.body.append(action);
+    let selected=null;
+    let selectionTimer;
+    function selectionInSong() {
+      const selection=window.getSelection();
+      if(!selection || selection.isCollapsed || !selection.rangeCount) return null;
+      const node=selection.anchorNode;
+      const prose=(node?.nodeType===Node.ELEMENT_NODE?node:node?.parentElement)?.closest('.annotated-text');
+      if(!prose || !prose.contains(selection.focusNode))return null;
+      const text=selection.toString().trim();
+      if(!text) return null;
+      return {text:text.slice(0,500), scope:prose.dataset.scope,
+        revision:prose.dataset.revision, songRevision:currentRevision,
+        rect:selection.getRangeAt(0).getBoundingClientRect()};
+    }
+    function hideAction(){action.hidden=true;selected=null;}
+    function showAction(selection,x,y) {
+      selected=selection;action.hidden=false;
+      const width=action.offsetWidth,height=action.offsetHeight;
+      action.style.left=`${Math.max(8,Math.min(x,window.innerWidth-width-8))}px`;
+      action.style.top=`${Math.max(8,Math.min(y,window.innerHeight-height-8))}px`;
+    }
+    function updateSelection() {
+      if(document.activeElement===action)return;
+      const selection=selectionInSong();
+      if(!selection){hideAction();return;}
+      showAction(selection,selection.rect.left,selection.rect.bottom+8);
+    }
+    document.addEventListener('selectionchange',()=>{
+      clearTimeout(selectionTimer);selectionTimer=setTimeout(updateSelection,150);
+    });
+    document.addEventListener('contextmenu',event=>{
+      if(event.shiftKey)return;
+      const selection=selectionInSong();
+      const target=event.target instanceof Element?event.target.closest('.annotated-text'):null;
+      if(!selection || !target || target.dataset.scope!==selection.scope)return;
+      event.preventDefault();clearTimeout(selectionTimer);
+      showAction(selection,event.clientX,event.clientY);
+    });
+    // Preserve the selection when the floating action is clicked with a mouse.
+    action.addEventListener('pointerdown',event=>event.preventDefault());
+    action.onclick=()=>{
+      if(!selected)return;
+      const anchor=selected;
+      commentForm.elements.anchor.value=anchor.text;
+      commentForm.elements.scope.value=anchor.scope;
+      commentForm.elements.part_revision.value=anchor.revision;
+      commentForm.elements.song_revision.value=anchor.songRevision;
+      document.querySelector('.comment-composer').open=true;
+      document.querySelector('#comment-status').textContent='Commenting on your selected phrase.';
+      hideAction();
+      window.getSelection()?.removeAllRanges();
+      const body=commentForm.elements.body;
+      body.focus({preventScroll:true});
+      body.scrollIntoView({behavior:'smooth',block:'nearest'});
+    };
+    document.addEventListener('pointerdown',event=>{
+      if(event.target!==action && !(event.target instanceof Element && event.target.closest('.annotated-text')))hideAction();
+    });
+    document.addEventListener('keydown',event=>{if(event.key==='Escape'){clearTimeout(selectionTimer);hideAction();}});
+    window.addEventListener('scroll',hideAction,true);
+    window.addEventListener('resize',hideAction);
+  }
   if(commentForm) {
     commentForm.elements.scope.onchange=()=>{commentForm.elements.anchor.value='';setCommentRevision();};
     commentForm.elements.anchor.addEventListener('input',setCommentRevision);

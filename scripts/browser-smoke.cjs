@@ -24,7 +24,26 @@ if(!base) throw new Error('Run this through scripts/browser_smoke.py against its
  await other.waitForFunction(()=>document.querySelector('#part-lyrics .editor-status').textContent==='All changes saved');
  await page.waitForFunction(()=>document.querySelector('#part-lyrics .prose').textContent.includes('morning light'));
  console.log('PASS different sections edit independently');
- await page.locator('#comment-scope').selectOption('lyrics');await page.locator('#comment-anchor').fill('morning light');
+ async function selectPhrase(p,selector,phrase) {
+   return p.locator(selector).evaluate((el,phrase)=>{
+     const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let node;
+     while((node=walker.nextNode())) {
+       const offset=node.textContent.indexOf(phrase);if(offset<0)continue;
+       const range=document.createRange();range.setStart(node,offset);range.setEnd(node,offset+phrase.length);
+       const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);
+       const rect=range.getBoundingClientRect();return {x:rect.left+rect.width/2,y:rect.top+rect.height/2};
+     }
+     throw new Error('Phrase not found');
+   },phrase);
+ }
+ await page.locator('.comment-composer').evaluate(el=>el.open=false);
+ await selectPhrase(page,'#part-lyrics .prose','morning light');
+ await page.getByRole('button',{name:'Comment on selection',exact:true}).click();
+ assert.equal(await page.locator('#comment-anchor').inputValue(),'morning light');
+ assert.equal(await page.locator('#comment-scope').inputValue(),'lyrics');
+ assert(await page.locator('#comment-form [name=body]').evaluate(el=>document.activeElement===el));
+ assert(await page.locator('.comment-composer').evaluate(el=>el.open));
+ console.log('PASS selected text starts a quoted comment and focuses composer');
  await page.locator('#comment-form [name=body]').fill('Could this phrase return in the chorus?');
  await page.getByRole('button',{name:'Share thought'}).click();
  await other.waitForFunction(()=>document.querySelector('#comment-list').textContent.includes('Could this phrase'));
@@ -34,6 +53,24 @@ if(!base) throw new Error('Run this through scripts/browser_smoke.py against its
  await other.getByRole('button',{name:'Collapse all'}).click();
  assert.equal(await other.locator('#comment-list details[open]').count(),0);
  console.log('PASS live comments, phrase markers, collapse and focus');
+ await other.locator('#part-lyrics .prose').scrollIntoViewIfNeeded();
+ const selectedPoint=await selectPhrase(other,'#part-lyrics .prose','sing together');
+ await other.mouse.click(selectedPoint.x,selectedPoint.y,{button:'right'});
+ await other.getByRole('button',{name:'Comment on selection',exact:true}).click();
+ assert.equal(await other.locator('#comment-anchor').inputValue(),'sing together');
+ assert(await other.locator('#comment-form [name=body]').evaluate(el=>document.activeElement===el));
+ await other.locator('#comment-form [name=body]').fill('Keep my draft while selecting another phrase.');
+ await other.locator('#part-lyrics .prose').scrollIntoViewIfNeeded();
+ await selectPhrase(other,'#part-lyrics .prose','morning light');
+ await other.getByRole('button',{name:'Comment on selection',exact:true}).click();
+ assert.equal(await other.locator('#comment-form [name=body]').inputValue(),'Keep my draft while selecting another phrase.');
+ await other.locator('#comment-form [name=body]').fill('');
+ await other.locator('#part-lyrics .prose').scrollIntoViewIfNeeded();
+ await selectPhrase(other,'#part-lyrics .prose','morning light');
+ await other.getByRole('button',{name:'Comment on selection',exact:true}).waitFor();
+ await other.keyboard.press('Escape');
+ assert.equal(await other.getByRole('button',{name:'Comment on selection',exact:true}).isVisible(),false);
+ console.log('PASS right-click selection, draft preservation and Escape dismissal');
  await page.locator('#part-concept summary').first().click();
  await other.waitForFunction(()=>!document.querySelector('#content-concept').readOnly);
  await other.locator('#content-concept').fill('Reviewer can continue after author closes editor.');
