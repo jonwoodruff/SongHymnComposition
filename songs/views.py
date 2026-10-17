@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from .models import Song, Membership, Part
 from .forms import JoinForm, SongForm
@@ -37,13 +38,33 @@ def create(request):
 
 def detail(request,pk):
     song=get_object_or_404(Song.objects.select_related('author'),pk=pk)
+    failed_save = None
     if request.method=='POST':
         if not request.user.is_authenticated: return redirect('login')
         try: act(request.user,song.pk,request.POST.get('action'),request.POST)
-        except ValidationError as error: messages.error(request,' '.join(error.messages))
-        else: messages.success(request,'Saved.')
-        return redirect('detail',pk=pk)
+        except ValidationError as error:
+            if request.headers.get('Accept') == 'application/json':
+                return JsonResponse({'error': ' '.join(error.messages)}, status=409)
+            messages.error(request,' '.join(error.messages))
+            if request.POST.get('action') == 'save':
+                failed_save = request.POST
+            else:
+                return redirect('detail',pk=pk)
+        else:
+            if request.headers.get('Accept') == 'application/json':
+                return JsonResponse({'message': 'Editing lock acquired for 15 minutes.'})
+            messages.success(request,'Saved.')
+            return redirect('detail',pk=pk)
+        song.refresh_from_db()
     parts=list(song.parts.all().order_by('id'))
     for part in parts:
         part.approval_count=count(song,part.kind,part.revision)
-    return render(request,'songs/detail.html',{'song':song,'parts':parts,'can_edit':can_edit(request.user,song),'can_comment':role(request.user) in ('commenter','contributor','reviewer'),'reviewer':role(request.user)=='reviewer','is_author':request.user.pk==song.author_id,'publication_count':count(song,'publish',song.revision,True),'comments':song.comments.select_related('user')})
+        part.editor_content = part.content
+        part.save_failed = bool(failed_save and failed_save.get('scope') == part.kind)
+        if part.save_failed:
+            part.editor_content = failed_save.get('content', '')
+            # Keep the submitted revision, so retrying cannot overwrite an unseen edit.
+            part.edit_revision = failed_save.get('revision', '')
+        else:
+            part.edit_revision = str(part.revision)
+    return render(request,'songs/detail.html',{'song':song,'parts':parts,'can_edit':can_edit(request.user,song),'can_comment':role(request.user) in ('commenter','contributor','reviewer'),'reviewer':role(request.user)=='reviewer','is_author':request.user.pk==song.author_id,'publication_count':count(song,'publish',song.revision,True),'comments':song.comments.select_related('user'), 'failed_save':failed_save}, status=409 if failed_save else 200)

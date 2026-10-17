@@ -31,7 +31,7 @@ No sample users, passwords, or compositions are created automatically. The datab
 - During frozen review, the author can request rework; two distinct experienced reviewers must approve returning it to development. Returning clears approvals and author sign-off.
 - A change to one draft section requires fresh approvals for that section, retains the other sections' approvals, and clears author sign-off.
 - Approval counts ignore inactive or demoted reviewers. All approval and permission checks run on the server. Administrator workflow records are read-only so the administration UI cannot skip the gates.
-- Editing requires a 15-minute lock on the section. Another person can comment while it is locked. Expired locks can be acquired by another editor. The page shows the holder and expiry; renewal is manual. Stale submissions are rejected and must be reloaded.
+- Opening an editor automatically acquires a 15-minute lock without leaving the page. Another person can comment while it is locked. Renewal is manual. Saving also works without a separate lock step when no other editor holds an active lock. Stale submissions and conflicting locks are rejected with the submitted text kept in the open editor; stale section revisions must be compared with the latest version before retrying.
 - Text selection can populate a comment's quoted phrase. Clicking notation can populate a tune character reference. Comments retain the discussed section revision; they do not follow later edits. Revision snapshots are retained in the database and are visible to administrators.
 
 ## Melody prototype

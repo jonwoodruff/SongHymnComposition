@@ -56,7 +56,9 @@ class WorkflowTests(TestCase):
     def test_expired_lock_and_stale_revision(self):
         self.do(self.author,'lock',scope='lyrics')
         EditLock.objects.update(expires=timezone.now()-timedelta(seconds=1))
+        self.do(self.reviewers[0],'lock',scope='lyrics')
         with self.assertRaises(ValidationError):self.do(self.author,'save',scope='lyrics',revision='1',content='Changed')
+        EditLock.objects.all().delete()
         self.do(self.author,'lock',scope='lyrics')
         with self.assertRaises(ValidationError):self.do(self.author,'save',scope='lyrics',revision='0',content='Changed')
     def test_edit_invalidates_only_changed_stream_and_author_signoff(self):
@@ -108,3 +110,61 @@ class WorkflowTests(TestCase):
         self.do(self.reviewers[0],'approve',scope='concept')
         Membership.objects.filter(user=self.reviewers[0]).update(role='commenter')
         self.assertEqual(count(self.song,'concept',1),0)
+
+    def test_save_concept_and_lyrics_without_manual_lock(self):
+        self.client.force_login(self.author)
+        for kind in ('concept', 'lyrics'):
+            self.song.refresh_from_db()
+            content = f"My {kind}\nA second line & a <phrase>"
+            response = self.client.post(f'/songs/{self.song.pk}/', {
+                'action': 'save', 'scope': kind, 'revision': '1',
+                'song_revision': str(self.song.revision), 'content': content,
+            }, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(self.song.parts.get(kind=kind).content, content)
+            self.assertContains(response, 'Saved.')
+            self.assertContains(response, f'My {kind}')
+
+    def test_rejected_save_keeps_text_and_editor_open(self):
+        self.client.force_login(self.author)
+        self.do(self.reviewers[0], 'lock', scope='lyrics')
+        response = self.client.post(f'/songs/{self.song.pk}/', {
+            'action': 'save', 'scope': 'lyrics', 'revision': '1',
+            'song_revision': '1', 'content': 'Do not lose this <draft>',
+        })
+        self.assertEqual(response.status_code, 409)
+        self.assertContains(response, 'Do not lose this &lt;draft&gt;', status_code=409)
+        self.assertContains(response, 'class="section-editor" open', status_code=409)
+        self.assertEqual(self.song.parts.get(kind='lyrics').content, 'First version')
+
+    def test_stale_save_keeps_original_revision_to_prevent_overwrite(self):
+        self.client.force_login(self.author)
+        self.do(self.reviewers[0], 'save', scope='lyrics', revision='1', content='Newer lyrics')
+        response = self.client.post(f'/songs/{self.song.pk}/', {
+            'action': 'save', 'scope': 'lyrics', 'revision': '1',
+            'song_revision': '1', 'content': 'My older draft',
+        })
+        self.assertEqual(response.status_code, 409)
+        self.assertContains(response, 'My older draft', status_code=409)
+        lyrics = next(p for p in response.context['parts'] if p.kind == 'lyrics')
+        self.assertEqual(lyrics.edit_revision, '1')
+        self.assertEqual(lyrics.revision, 2)
+        self.assertEqual(lyrics.content, 'Newer lyrics')
+
+    def test_lock_can_be_requested_without_page_navigation(self):
+        self.client.force_login(self.author)
+        payload = {'action': 'lock', 'scope': 'lyrics', 'song_revision': '1'}
+        response = self.client.post(f'/songs/{self.song.pk}/', payload, HTTP_ACCEPT='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('message', response.json())
+        self.assertEqual(EditLock.objects.get(part__kind='lyrics').user, self.author)
+        self.client.force_login(self.reviewers[0])
+        response = self.client.post(f'/songs/{self.song.pk}/', payload, HTTP_ACCEPT='application/json')
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('error', response.json())
+
+    def test_expired_lock_can_be_saved_if_revision_is_current(self):
+        self.do(self.author, 'lock', scope='lyrics')
+        EditLock.objects.update(expires=timezone.now()-timedelta(seconds=1))
+        self.do(self.author, 'save', scope='lyrics', revision='1', content='Saved after expiry')
+        self.assertEqual(self.song.parts.get(kind='lyrics').content, 'Saved after expiry')

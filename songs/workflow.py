@@ -34,7 +34,8 @@ def act(user, song_id, action, data):
             require(not lock or lock.expires <= timezone.now() or lock.user_id == user.pk, 'Someone else holds this editing lock.')
             EditLock.objects.update_or_create(part=part, defaults={'user':user, 'expires':timezone.now()+timedelta(minutes=15)})
             return
-        require(lock and lock.user_id == user.pk and lock.expires > timezone.now(), 'Acquire an editing lock first; locks last 15 minutes.')
+        require(not lock or lock.expires <= timezone.now() or lock.user_id == user.pk,
+                'Someone else holds this editing lock. Your text has been kept below; try again when they finish.')
         require(str(part.revision) == data.get('revision'), 'This section changed. Reload before saving.')
         content = data.get('content','').strip()
         require(bool(content), 'Please provide content.')
@@ -45,7 +46,8 @@ def act(user, song_id, action, data):
         song.revision += 1
         song.author_signed = False
         song.save()
-        lock.delete()
+        if lock:
+            lock.delete()
     elif action == 'comment':
         scope = data.get('scope')
         require(scope in ('concept','lyrics','tune','review'), 'Choose a valid discussion area.')
