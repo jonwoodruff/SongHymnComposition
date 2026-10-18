@@ -54,6 +54,24 @@ Recordings are public composition/comment contributions under the existing agree
 
 Files are stored in `media/` (or the `MEDIA_ROOT` environment setting), excluded from Git along with the database. Audio is served through `/recordings/<uuid>/` with a validated audio content type, generated filenames, and byte-range support. Back up the media directory **and** database together. On a hosted installation, configure persistent media storage and an upstream request-size limit to match the 25 MB application limit. Files are retained for revision history; there is not yet a storage-quota or archival-purge interface.
 
+## BarMaker: performing short melody snippets
+
+Inside **Edit tune**, open **Compose a few bars with BarMaker**. The widget offers onscreen piano keys, mapped physical keys, and monophonic singing/humming through Pitchy. Choose meter, quarter-note tempo, bar count (one to eight), and an eighth/sixteenth-note timing grid. Record gives a one-bar count-in by default, with audible clicks and coloured numbered beats. Playback reads the editable ABC snippet. Copy its notes, or use **Append snippet to tune** to preserve the full composition and autosave the appended phrase. Inline ABC fields retain the snippet's meter, note unit, tempo and key when the song already has notes.
+
+[BarMaker](https://github.com/jonwoodruff/BarMaker) is an independent repository included at `BarMaker/` as a Git submodule, with its own package manifest, lockfile, demo, tests, MIT licence, and Web Component API. The website keeps a generated distribution in `songs/static/songs/barmaker/`, so the site can run without Node or the standalone source checkout. Fetch the component source with `git submodule update --init BarMaker`. To rebuild the website's copy:
+
+```sh
+cd BarMaker
+npm ci
+npm test
+npm run test:browser
+# Commit changes in the standalone repository before updating its distribution.
+cd ..
+python3 scripts/vendor_barmaker.py
+```
+
+The build's version, source commit, and SHA-256 digest are recorded alongside the generated asset. Microphone processing stays in the browser. Pitch detection is for a single clear melody, can misidentify pitch or articulation, and requires review. BarMaker is a performance-to-notation sketch tool, not a replacement for a full sheet-music editor. The older note buttons remain available below it.
+
 ## Melody prototype
 
 The initial editor supports adding natural notes and rests with eighth, quarter, half, and whole-note durations, plus bar lines and undo, with C-major notation rendered by locally vendored **abcjs 6.7.1**. Preview uses the browser's Web Audio API with a synthesized tone, without fetching soundfonts. Clicking a displayed note populates the comment reference.

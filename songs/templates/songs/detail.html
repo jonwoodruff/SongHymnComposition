@@ -38,7 +38,7 @@
       {% if part.kind == 'concept' %}<p class="muted">Theme, scripture and ministry sources, verse count, chorus, and the thought behind each verse.</p>{% endif %}
       {% if part.save_failed %}<p class="notice">Your changes have not been saved. Your text is preserved below. Copy it before reloading to compare with the latest version.</p>{% endif %}
       <label class="sr-only" for="content-{{ part.kind }}">{{ part.get_kind_display }}</label><textarea id="content-{{ part.kind }}" name="content" rows="10">{{ part.editor_content }}</textarea>
-      {% if part.kind == 'tune' %}<div class="melody-tools"></div>{% endif %}
+      {% if part.kind == 'tune' %}<details class="bar-maker-panel"><summary>Compose a few bars with BarMaker</summary><bar-maker></bar-maker><button type="button" class="append-snippet">Append snippet to tune</button><p class="snippet-status muted" role="status">The snippet stays separate until you append or copy it.</p></details><div class="melody-tools"></div>{% endif %}
       <div class="editor-footer"><span class="editor-status muted" role="status">Changes save automatically as you write.</span><button class="save-button" name="action" value="save">Save now</button></div>
       <div class="conflict-panel" hidden><p>Your text is kept above. Compare it with the latest saved version below before continuing.</p><label>Latest saved version<textarea class="latest-content" readonly rows="6"></textarea></label><button type="button" class="use-latest">Use the latest saved version</button></div>
     </form>
@@ -93,7 +93,9 @@
 {% endblock %}
 {% block scripts %}
 <script src="{% static 'songs/abcjs-basic-min.js' %}"></script>
+<script src="{% static 'songs/barmaker/bar-maker.iife.js' %}"></script>
 <script src="{% static 'songs/melody.js' %}"></script>
+<script src="{% static 'songs/barmaker-host.js' %}"></script>
 <script src="{% static 'songs/editing.js' %}"></script>
 <script src="{% static 'songs/microphone.js' %}"></script>
 {% endblock %}

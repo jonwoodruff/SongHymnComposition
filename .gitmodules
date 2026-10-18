@@ -1,0 +1,3 @@
+[submodule "BarMaker"]
+	path = BarMaker
+	url = https://github.com/jonwoodruff/BarMaker.git

@@ -2,10 +2,14 @@
 (() => {
   const initial = 'X:1\nM:4/4\nL:1/4\nK:C\n';
   let audio;
-  window.addEventListener('playback:recording',()=>{if(audio){audio.close();audio=null;}});
-  function play(abc) {
+  let stopABC=null;
+  let playbackGeneration=0;
+  function stopPlayback(){playbackGeneration++;stopABC?.();stopABC=null;if(audio){audio.close();audio=null;}}
+  window.addEventListener('playback:recording',stopPlayback);
+  async function play(abc) {
     document.querySelectorAll('audio').forEach(recording=>recording.pause());
-    if (audio) audio.close();
+    stopPlayback();
+    if(window.BarMaker?.playABC){const generation=playbackGeneration;const stop=await window.BarMaker.playABC(abc);if(generation!==playbackGeneration)stop();else stopABC=stop;return;}
     audio = new (window.AudioContext || window.webkitAudioContext)();
     audio.resume();
     const unit = Number((abc.match(/^Q:1\/4=(\d+)/m)||[])[1] || 100);
@@ -36,8 +40,8 @@
       if(anchor && element.startChar !== undefined) {anchor.value=`Tune characters ${element.startChar}–${element.endChar}: ${abc.slice(element.startChar,element.endChar)}`;scope.value='tune';window.dispatchEvent(new Event('comment:anchor'));}
     }});
     else paper.textContent='Notation renderer unavailable. Melody source is preserved.';
-    const playButton=document.createElement('button');playButton.type='button';playButton.textContent='▶ Play melody';playButton.onclick=()=>play(abc);container.append(playButton);
-    const stop=document.createElement('button');stop.type='button';stop.textContent='■ Stop';stop.onclick=()=>{if(audio) audio.close();audio=null;};container.append(stop);
+    const playButton=document.createElement('button');playButton.type='button';playButton.textContent='▶ Play melody';playButton.onclick=()=>play(abc).catch(error=>{let message=container.querySelector('.playback-error');if(!message){message=document.createElement('p');message.className='playback-error';message.setAttribute('role','status');container.append(message);}message.textContent=error.message;});container.append(playButton);
+    const stop=document.createElement('button');stop.type='button';stop.textContent='■ Stop';stop.onclick=stopPlayback;container.append(stop);
   }
   window.addEventListener('melody:refresh',event=>preview(event.detail.container,event.detail.content));
   document.querySelectorAll('.music-display').forEach(el=>{if(el.dataset.content) preview(el,el.dataset.content);else el.textContent='No melody yet.';});

@@ -82,6 +82,18 @@ if(!base) throw new Error('Run this through scripts/browser_smoke.py against its
  await page.waitForFunction(()=>document.querySelector('#part-tune .editor-status').textContent==='All changes saved');
  await other.waitForFunction(()=>document.querySelector('#part-tune .music-display svg'));
  console.log('PASS melody buttons autosave and notation refresh');
+ await page.locator('.bar-maker-panel > summary').click();
+ await page.waitForFunction(()=>customElements.get('bar-maker') && document.querySelector('bar-maker').shadowRoot?.querySelector('.notation svg'));
+ const beforeSnippet=await page.locator('#content-tune').inputValue();
+ await page.locator('bar-maker').evaluate(maker=>maker.setABC('X:1\nM:3/4\nL:1/8\nQ:1/4=120\nK:C\n^F2 =F2 z2 |'));
+ await page.getByRole('button',{name:'Append snippet to tune',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#part-tune .editor-status').textContent==='All changes saved');
+ const afterSnippet=await page.locator('#content-tune').inputValue();
+ assert(afterSnippet.startsWith(beforeSnippet.trim()));assert(afterSnippet.includes('[M:3/4][L:1/8][Q:1/4=120][K:C] ^F2 =F2 z2 |'));
+ await other.waitForFunction(()=>document.querySelector('#part-tune .music-display').dataset.content.includes('^F2 =F2'));
+ console.log('PASS independent BarMaker snippet appends with its meter/tempo and autosaves without replacing the tune');
+ await page.locator('.bar-maker-panel > summary').click();
+
  function wavFile() {
    const samples=8000*30, buffer=Buffer.alloc(44+samples*2);
    buffer.write('RIFF',0);buffer.writeUInt32LE(buffer.length-8,4);buffer.write('WAVEfmt ',8);
